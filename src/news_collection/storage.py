@@ -50,8 +50,8 @@ def store_papers(entries: list[ArxivEntry], storage_dir: Path) -> list[ArxivEntr
     with out_path.open("w", encoding="utf-8") as f:
         for entry in new_entries:
             payload = asdict(entry)
-            payload["published"] = entry.published.isoformat()
-            payload["updated"] = entry.updated.isoformat()
+            payload["published"] = entry.published.isoformat() if entry.published else None
+            payload["updated"] = entry.updated.isoformat() if entry.updated else None
             f.write(json.dumps(payload, ensure_ascii=True) + "\n")
 
     _append_index(storage_dir, [e.arxiv_id for e in new_entries])

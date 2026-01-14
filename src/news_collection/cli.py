@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime
+import logging
 
 from .graph import ContentType, parse_datetime, run_collection
 
@@ -23,11 +24,16 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--iflow-model", default="qwen3-coder-plus")
     parser.add_argument("--max-results", type=int, default=50)
     parser.add_argument("--pdf-max-chars", type=int, default=16000)
+    parser.add_argument("--log-level", default="INFO")
     return parser.parse_args()
 
 
 def main() -> int:
     args = _parse_args()
+    logging.basicConfig(
+        level=getattr(logging, args.log_level.upper(), logging.INFO),
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
     start: datetime | None = parse_datetime(args.start, args.tz) if args.start else None
     end: datetime | None = parse_datetime(args.end, args.tz) if args.end else None
 
