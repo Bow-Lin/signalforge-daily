@@ -4,7 +4,8 @@ import argparse
 from datetime import datetime
 import logging
 
-from .graph import ContentType, parse_datetime, run_collection
+from .graph import ContentType, run_collection
+from datetime import timezone
 
 
 def _parse_args() -> argparse.Namespace:
@@ -34,8 +35,18 @@ def main() -> int:
         level=getattr(logging, args.log_level.upper(), logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
-    start: datetime | None = parse_datetime(args.start, args.tz) if args.start else None
-    end: datetime | None = parse_datetime(args.end, args.tz) if args.end else None
+    start: datetime | None = None
+    end: datetime | None = None
+    if args.start:
+        dt = datetime.fromisoformat(args.start)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        start = dt
+    if args.end:
+        dt = datetime.fromisoformat(args.end)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        end = dt
 
     result = run_collection(
         topic=args.topic,

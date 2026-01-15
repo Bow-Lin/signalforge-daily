@@ -5,14 +5,12 @@ from datetime import datetime, timezone
 import json
 import logging
 from pathlib import Path
-from typing import Annotated, Literal, TypedDict, cast
+from typing import Literal, TypedDict
 
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
-from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode
 
 from .arxiv import ArxivEntry, fetch_arxiv
 from .iflow import load_iflow_config
@@ -26,20 +24,22 @@ ContentType = Literal["paper", "news", "blog", "all"]
 class GraphState(TypedDict, total=False):
     topic: str
     requirements: str
-    search_query: str
-    must_mention: list[str]
     content_type: ContentType
     start: datetime | None
     end: datetime | None
     timezone: str
+    max_results: int
+    pdf_max_chars: int
     iflow_key: str | None
     iflow_base_url: str | None
     iflow_model: str | None
-    max_results: int
-    pdf_max_chars: int
-    messages: Annotated[list[BaseMessage], add_messages]
-    papers: dict[str, ArxivEntry]
-    pdf_texts: dict[str, str]
+    search_query: str
+    must_mention: list[str]
+    plan: list[dict]
+    tool_results: dict[str, object]
+    candidates: dict[str, list[dict]]
+    pdf_evidence: dict[str, dict]
+    selected: dict[str, list[str]]
     valuable_papers: list[ArxivEntry]
     stored_papers: list[ArxivEntry]
 
@@ -50,91 +50,6 @@ class GraphResult:
 
 
 logger = logging.getLogger(__name__)
-
-
-_MAX_LLM_INPUT_CHARS = 200000
-
-
-def _truncate_messages(messages: list[BaseMessage]) -> list[BaseMessage]:
-    total = sum(len(getattr(m, "content", "") or "") for m in messages)
-    if total <= _MAX_LLM_INPUT_CHARS:
-        return messages
-
-    truncated: list[BaseMessage] = []
-    remaining = _MAX_LLM_INPUT_CHARS
-    for msg in messages:
-        content = getattr(msg, "content", "") or ""
-        if not content:
-            truncated.append(msg)
-            continue
-        if remaining <= 0:
-            truncated.append(HumanMessage(content="(truncated due to input limit)"))
-            break
-        if content.startswith("pdf_text for "):
-            if len(content) > remaining:
-                content = content[:remaining]
-            remaining -= len(content)
-            truncated.append(HumanMessage(content=content))
-        else:
-            if len(content) > remaining:
-                content = content[:remaining]
-            remaining -= len(content)
-            truncated.append(HumanMessage(content=content))
-    return truncated
-
-
-def _extract_intent(state: GraphState) -> GraphState:
-    config = load_iflow_config(
-        api_key=state.get("iflow_key"),
-        base_url=state.get("iflow_base_url"),
-        model=state.get("iflow_model"),
-    )
-    llm = ChatOpenAI(
-        api_key=config.api_key,
-        base_url=config.base_url,
-        model=config.model,
-        temperature=0.1,
-        max_tokens=8000,
-    )
-    requirements = state.get("requirements") or state.get("topic", "")
-    prompt = (
-        "You extract a search query and must-mention keywords from a user request.\n"
-        "Return JSON: {\"search_query\": \"...\", \"must_mention\": [\"...\"]}.\n"
-        "Rules:\n"
-        "- search_query should be short and suitable for arXiv search.\n"
-        "- must_mention are exact dataset or keyword constraints to check in PDFs.\n"
-        "- If none, return an empty list.\n\n"
-        f"Request: {requirements}\n"
-    )
-    response = llm.invoke([HumanMessage(content=prompt)])
-    content = response.content or "{}"
-    try:
-        payload = json.loads(content)
-        search_query = str(payload.get("search_query", "")).strip()
-        must_mention = payload.get("must_mention", [])
-        if not isinstance(must_mention, list):
-            must_mention = []
-    except Exception:
-        search_query = requirements
-        must_mention = []
-
-    if not search_query:
-        search_query = requirements
-
-    logger.info("intent search_query=%s must_mention=%s", search_query, must_mention)
-    return {"search_query": search_query, "must_mention": must_mention}
-
-
-def _inject_intent_message(state: GraphState) -> GraphState:
-    search_query = state.get("search_query", "")
-    must_mention = state.get("must_mention", [])
-    msg = HumanMessage(
-        content=(
-            f"search_query: {search_query}\n"
-            f"must_mention: {json.dumps(must_mention)}"
-        )
-    )
-    return {"messages": [msg]}
 
 
 @tool
@@ -151,21 +66,12 @@ def search_arxiv_tool(
         end_iso = None
     start_dt = datetime.fromisoformat(start_iso) if start_iso else None
     end_dt = datetime.fromisoformat(end_iso) if end_iso else None
-    logger.info(
-        "search_arxiv_tool query=%s start=%s end=%s max_results=%s",
-        query,
-        start_iso,
-        end_iso,
-        max_results,
-    )
     entries = fetch_arxiv(
         query,
         max_results=max_results,
         start_dt=start_dt,
         end_dt=end_dt,
     )
-    logger.info("search_arxiv_tool fetched=%s", len(entries))
-    logger.info("search_arxiv_tool titles=%s", [entry.title for entry in entries])
     payload = []
     for entry in entries:
         payload.append(
@@ -184,200 +90,381 @@ def search_arxiv_tool(
 
 
 @tool
+def search_blog_tool(
+    query: str,
+    start_iso: str | None = None,
+    end_iso: str | None = None,
+    max_results: int = 50,
+) -> list[dict]:
+    """Search blog posts (stub)."""
+    _ = (query, start_iso, end_iso, max_results)
+    return []
+
+
+@tool
+def search_news_tool(
+    query: str,
+    start_iso: str | None = None,
+    end_iso: str | None = None,
+    max_results: int = 50,
+) -> list[dict]:
+    """Search news articles (stub)."""
+    _ = (query, start_iso, end_iso, max_results)
+    return []
+
+
+@tool
 def read_pdf_tool(
     url: str,
-    max_chars: int = 8000,
+    max_chars: int = 60000,
 ) -> str:
     """Download and read a PDF, returning extracted text."""
     cache_dir = _paper_dir() / "pdf_cache"
     if not url.endswith(".pdf"):
         url = url + ".pdf"
-    logger.info("read_pdf_tool url=%s max_chars=%s", url, max_chars)
     try:
         result = fetch_and_read_pdf(url=url, cache_dir=cache_dir, max_chars=max_chars)
     except Exception as exc:
         logger.warning("read_pdf_tool failed url=%s err=%s", url, exc)
         return ""
-    logger.info("read_pdf_tool text_chars=%s", len(result.text))
     return result.text
 
 
-def _build_agent(state: GraphState) -> ChatOpenAI:
+def _build_llm(state: GraphState, temperature: float, max_tokens: int) -> ChatOpenAI:
     config = load_iflow_config(
         api_key=state.get("iflow_key"),
         base_url=state.get("iflow_base_url"),
         model=state.get("iflow_model"),
     )
-    llm = ChatOpenAI(
+    return ChatOpenAI(
         api_key=config.api_key,
         base_url=config.base_url,
         model=config.model,
-        temperature=config.temperature,
-        max_tokens=config.max_tokens,
+        temperature=temperature,
+        max_tokens=max_tokens,
     )
-    return llm.bind_tools([search_arxiv_tool])
 
 
-def _agent_node(state: GraphState) -> GraphState:
-    llm = _build_agent(state)
-    messages = _truncate_messages(state["messages"])
-    logger.info("agent step messages=%s", len(messages))
-    response = llm.invoke(messages)
-    logger.debug("agent response tool_calls=%s", getattr(response, "tool_calls", None))
-    logger.debug("agent response content_len=%s", len(response.content or ""))
-    return {"messages": [response]}
+def _plan_tools(state: GraphState) -> GraphState:
+    llm = _build_llm(state, temperature=0.1, max_tokens=1200)
+    requirements = state.get("requirements") or state.get("topic", "")
+    start_iso = state.get("start").isoformat() if state.get("start") else None
+    end_iso = state.get("end").isoformat() if state.get("end") else None
+    content_type = state.get("content_type", "paper")
+    max_results = state.get("max_results", 50)
 
-
-def _needs_tool_followup(state: GraphState) -> str:
-    messages = state.get("messages", [])
-    if not messages:
-        return "collect_results"
-    last = messages[-1]
-    if hasattr(last, "tool_calls") and last.tool_calls:
-        return "tools"
-
-    has_search = False
-    has_read_pdf = False
-    for msg in messages:
-        tool_name = getattr(msg, "name", "")
-        if tool_name == "search_arxiv_tool":
-            has_search = True
-        if tool_name == "read_pdf_tool":
-            has_read_pdf = True
-
-    if has_search and not has_read_pdf:
-        return "force_read"
-    return "collect_results"
-
-
-def _force_read_prompt(state: GraphState) -> GraphState:
-    note = HumanMessage(
+    system = SystemMessage(
         content=(
-            "PDFs will be read automatically for each candidate paper "
-            "returned by search_arxiv_tool. Do not construct URLs yourself."
+            "You must output strict JSON only. "
+            "Plan tool calls to collect candidates for the request."
         )
     )
-    return {"messages": [note]}
+    user = HumanMessage(
+        content=(
+            "Return JSON: {\"search_query\": \"...\", "
+            "\"must_mention\": [\"...\"], "
+            "\"plan\": [{\"tool\": \"...\", \"args\": {...}}]}\n"
+            "Rules:\n"
+            "- tool must be one of: search_arxiv_tool, search_blog_tool, search_news_tool\n"
+            "- include start_iso/end_iso if provided, else null\n"
+            "- if content_type=paper, plan only arxiv\n"
+            "- if content_type=all, plan multiple tools\n\n"
+            f"requirements: {requirements}\n"
+            f"content_type: {content_type}\n"
+            f"start_iso: {start_iso}\n"
+            f"end_iso: {end_iso}\n"
+            f"max_results: {max_results}\n"
+        )
+    )
+    response = llm.invoke([system, user])
+    content = response.content or "{}"
+
+    default_tool = "search_arxiv_tool"
+    if content_type == "news":
+        default_tool = "search_news_tool"
+    elif content_type == "blog":
+        default_tool = "search_blog_tool"
+
+    default_plan = [
+        {
+            "tool": default_tool,
+            "args": {
+                "query": requirements,
+                "start_iso": start_iso,
+                "end_iso": end_iso,
+                "max_results": max_results,
+            },
+        }
+    ]
+
+    try:
+        payload = json.loads(content)
+        search_query = str(payload.get("search_query", "")).strip() or requirements
+        must_mention = payload.get("must_mention", [])
+        if not isinstance(must_mention, list):
+            must_mention = []
+        plan = payload.get("plan", [])
+        if not isinstance(plan, list) or not plan:
+            plan = default_plan
+    except Exception:
+        search_query = requirements
+        must_mention = []
+        plan = default_plan
+
+    allowed_tools = {"search_arxiv_tool", "search_blog_tool", "search_news_tool"}
+    normalized_plan: list[dict] = []
+    for step in plan:
+        if not isinstance(step, dict):
+            continue
+        tool_name = step.get("tool")
+        args = step.get("args") if isinstance(step.get("args"), dict) else {}
+        if tool_name not in allowed_tools:
+            continue
+        if "query" not in args or not args.get("query"):
+            args["query"] = search_query
+        if "max_results" not in args:
+            args["max_results"] = max_results
+        if "start_iso" not in args:
+            args["start_iso"] = start_iso
+        if "end_iso" not in args:
+            args["end_iso"] = end_iso
+        normalized_plan.append({"tool": tool_name, "args": args})
+
+    if content_type == "paper":
+        normalized_plan = [s for s in normalized_plan if s["tool"] == "search_arxiv_tool"]
+    elif content_type == "news":
+        normalized_plan = [s for s in normalized_plan if s["tool"] == "search_news_tool"]
+    elif content_type == "blog":
+        normalized_plan = [s for s in normalized_plan if s["tool"] == "search_blog_tool"]
+
+    if not normalized_plan:
+        normalized_plan = default_plan
+
+    logger.info("plan_tools must_mention=%s plan_steps=%s", must_mention, len(normalized_plan))
+    return {
+        "search_query": search_query,
+        "must_mention": must_mention,
+        "plan": normalized_plan,
+    }
 
 
-def _auto_read_pdfs(state: GraphState) -> GraphState:
-    papers = state.get("papers") or {}
-    if not papers:
-        return {"pdf_texts": {}}
-    pdf_texts: dict[str, str] = {}
-    for arxiv_id, entry in papers.items():
+def _execute_tools(state: GraphState) -> GraphState:
+    plan = state.get("plan", [])
+    results: dict[str, object] = {}
+    candidates = {"paper": [], "blog": [], "news": []}
+    tool_map = {
+        "search_arxiv_tool": search_arxiv_tool,
+        "search_blog_tool": search_blog_tool,
+        "search_news_tool": search_news_tool,
+    }
+
+    for idx, step in enumerate(plan):
+        tool_name = step.get("tool")
+        args = step.get("args", {})
+        tool = tool_map.get(tool_name)
+        if tool is None:
+            continue
         try:
-            text = read_pdf_tool.invoke(
-                {"url": _arxiv_pdf_url(entry.arxiv_id), "max_chars": state.get("pdf_max_chars", 8000)}
-            )
-            pdf_texts[arxiv_id] = text or ""
+            output = tool.invoke(args)
         except Exception as exc:
-            logger.warning("read_pdf_tool failed url=%s err=%s", entry.arxiv_id, exc)
-            pdf_texts[arxiv_id] = ""
-    return {"pdf_texts": pdf_texts}
+            logger.warning("execute_tools failed tool=%s err=%s", tool_name, exc)
+            output = []
+        results[f"step_{idx}"] = output
+        if tool_name == "search_arxiv_tool":
+            candidates["paper"].extend(output)
+        elif tool_name == "search_blog_tool":
+            candidates["blog"].extend(output)
+        elif tool_name == "search_news_tool":
+            candidates["news"].extend(output)
+        logger.info("execute_tools tool=%s count=%s", tool_name, len(output))
+
+    return {"tool_results": results, "candidates": candidates}
 
 
-def _must_mentions_present(text: str, must_mention: list[str]) -> bool:
+def _extract_snippet(text: str, must_mention: list[str], max_chars: int) -> str:
+    if not text:
+        return ""
     if not must_mention:
-        return True
+        return text[:max_chars]
+
     lowered = text.lower()
-    return all(m.lower() in lowered for m in must_mention)
-
-
-def _evaluate_each(state: GraphState) -> GraphState:
-    papers = state.get("papers") or {}
-    if not papers:
-        return {"valuable_papers": []}
-    pdf_texts = state.get("pdf_texts") or {}
-    must_mention = state.get("must_mention") or []
-    config = load_iflow_config(
-        api_key=state.get("iflow_key"),
-        base_url=state.get("iflow_base_url"),
-        model=state.get("iflow_model"),
-    )
-    llm = ChatOpenAI(
-        api_key=config.api_key,
-        base_url=config.base_url,
-        model=config.model,
-        temperature=0.1,
-        max_tokens=800,
-    )
-    valuable: list[ArxivEntry] = []
-    for arxiv_id, entry in papers.items():
-        text = pdf_texts.get(arxiv_id, "")
-        if must_mention and not _must_mentions_present(text, must_mention):
+    snippets: list[str] = []
+    remaining = max_chars
+    window = 400
+    for kw in must_mention:
+        kw_lower = kw.lower()
+        idx = lowered.find(kw_lower)
+        if idx == -1:
             continue
-        prompt = (
-            "Determine if the paper is valuable for the requirements.\n"
-            "Return JSON: {\"valuable\": true/false} with no extra text.\n"
-            "Requirements must be satisfied, including any dataset mentions.\n\n"
-            f"Requirements: {state.get('requirements') or state.get('topic')}\n"
-            f"Title: {entry.title}\n"
-            f"Summary: {entry.summary}\n"
-            "PDF (excerpt or full):\n"
-            f"{text}\n"
+        start = max(0, idx - window)
+        end = min(len(text), idx + window)
+        chunk = text[start:end]
+        if len(chunk) > remaining:
+            chunk = chunk[:remaining]
+        snippets.append(chunk)
+        remaining -= len(chunk)
+        if remaining <= 0:
+            break
+    return "\n...\n".join(snippets)
+
+
+def _read_pdfs_for_papers(state: GraphState) -> GraphState:
+    candidates = state.get("candidates", {})
+    papers = candidates.get("paper", [])
+    must_mention = state.get("must_mention", [])
+    pdf_max_chars = state.get("pdf_max_chars", 8000)
+    fetch_budget = max(pdf_max_chars * 5, pdf_max_chars)
+    fetch_budget = min(fetch_budget, 60000)
+    pdf_evidence: dict[str, dict] = {}
+
+    for item in papers:
+        arxiv_id = item.get("id")
+        if not arxiv_id:
+            continue
+        pdf_url = item.get("pdf_url") or _arxiv_pdf_url(arxiv_id)
+        text = read_pdf_tool.invoke({"url": pdf_url, "max_chars": fetch_budget})
+        mentions = {kw: (kw.lower() in (text or "").lower()) for kw in must_mention}
+        snippet = _extract_snippet(text, must_mention, pdf_max_chars)
+        summary = item.get("summary", "") or ""
+        text_snippet = (
+            f"ID: {arxiv_id}\n"
+            f"TITLE: {item.get('title', '')}\n"
+            f"SUMMARY: {summary}\n"
+            f"MUST_MENTION_MATCH: {json.dumps(mentions)}\n"
+            "PDF_EVIDENCE:\n"
+            f"{snippet}"
         )
-        response = llm.invoke([HumanMessage(content=prompt)])
-        try:
-            payload = json.loads(response.content or "{}")
-            if bool(payload.get("valuable", False)):
-                valuable.append(entry)
-        except Exception:
-            continue
-    return {"valuable_papers": valuable}
+        pdf_evidence[arxiv_id] = {
+            "pdf_url": pdf_url,
+            "summary": summary,
+            "snippet": snippet,
+            "text_snippet": text_snippet,
+            "mentions": mentions,
+            "error": None if text else "empty_text",
+        }
+        logger.info(
+            "read_pdfs arxiv_id=%s snippet_len=%s mentions=%s",
+            arxiv_id,
+            len(snippet),
+            mentions,
+        )
+
+    return {"pdf_evidence": pdf_evidence}
 
 
-def _collect_results(state: GraphState) -> GraphState:
-    papers: dict[str, ArxivEntry] = {}
-    for msg in state["messages"]:
-        tool_name = getattr(msg, "name", "")
-        if tool_name != "search_arxiv_tool":
-            continue
-        try:
-            payload = json.loads(msg.content)
-        except Exception:
-            continue
-        if not isinstance(payload, list):
-            continue
-        for item in payload:
-            try:
-                arxiv_id = cast(str, item["id"])
-                published_raw = item.get("published")
-                updated_raw = item.get("updated")
-                papers[arxiv_id] = ArxivEntry(
-                    arxiv_id=arxiv_id,
-                    title=cast(str, item["title"]),
-                    summary=cast(str, item["summary"]),
-                    url=cast(str, item["url"]),
-                    published=datetime.fromisoformat(published_raw)
-                    if published_raw
-                    else None,
-                    updated=datetime.fromisoformat(updated_raw) if updated_raw else None,
-                    authors=cast(list[str], item["authors"]),
-                )
-            except Exception:
-                continue
+def _final_select(state: GraphState) -> GraphState:
+    llm = _build_llm(state, temperature=0.1, max_tokens=1200)
+    requirements = state.get("requirements") or state.get("topic", "")
+    must_mention = state.get("must_mention", [])
+    candidates = state.get("candidates", {})
+    pdf_evidence = state.get("pdf_evidence", {})
 
-    final_ids: list[str] = []
-    for msg in reversed(state["messages"]):
-        if msg.type != "ai":
-            continue
-        try:
-            final_ids = json.loads(msg.content)
-        except Exception:
-            final_ids = []
-        logger.debug("collect_results final_ai_content_len=%s", len(msg.content or ""))
-        break
+    paper_blocks: list[str] = []
+    max_total_chars = 120000
+    per_item_chars = 3000
+    used = 0
+    for item in candidates.get("paper", []):
+        arxiv_id = item.get("id")
+        evidence = pdf_evidence.get(arxiv_id, {})
+        snippet = evidence.get("text_snippet", "")
+        if len(snippet) > per_item_chars:
+            snippet = snippet[:per_item_chars]
+        if used + len(snippet) > max_total_chars:
+            break
+        paper_blocks.append(snippet)
+        used += len(snippet)
 
-    valuable = [papers[pid] for pid in final_ids if pid in papers]
-    logger.info(
-        "collect_results papers=%s valuable=%s", len(papers), len(valuable)
+    def _format_items(items: list[dict]) -> str:
+        lines = []
+        for item in items:
+            lines.append(
+                f"ID: {item.get('id')}\n"
+                f"TITLE: {item.get('title', '')}\n"
+                f"SUMMARY: {item.get('summary', '')}\n"
+                f"URL: {item.get('url', '')}\n"
+                f"PUBLISHED: {item.get('published', '')}\n"
+            )
+        return "\n".join(lines)
+
+    system = SystemMessage(
+        content=(
+            "You must output strict JSON only. "
+            "Select items that satisfy the requirements."
+        )
     )
-    return {"papers": papers, "valuable_papers": valuable}
+    papers_text = "\n\n".join(paper_blocks)
+    user = HumanMessage(
+        content=(
+            f"requirements: {requirements}\n"
+            f"must_mention: {must_mention}\n\n"
+            "PAPERS:\n"
+            f"{papers_text}\n\n"
+            "BLOGS:\n"
+            f"{_format_items(candidates.get('blog', []))}\n\n"
+            "NEWS:\n"
+            f"{_format_items(candidates.get('news', []))}\n\n"
+            "Return JSON: {\"paper\": [ids], \"blog\": [ids], \"news\": [ids]}"
+        )
+    )
+    response = llm.invoke([system, user])
+    content = response.content or "{}"
+
+    selected = {"paper": [], "blog": [], "news": []}
+    try:
+        payload = json.loads(content)
+        for key in ("paper", "blog", "news"):
+            ids = payload.get(key, [])
+            if isinstance(ids, list):
+                selected[key] = [str(i) for i in ids]
+    except Exception:
+        selected = {"paper": [], "blog": [], "news": []}
+
+    valid_ids = {
+        "paper": {item.get("id") for item in candidates.get("paper", [])},
+        "blog": {item.get("id") for item in candidates.get("blog", [])},
+        "news": {item.get("id") for item in candidates.get("news", [])},
+    }
+    for key in ("paper", "blog", "news"):
+        selected[key] = [item for item in selected[key] if item in valid_ids[key]]
+
+    logger.info(
+        "final_select selected paper=%s blog=%s news=%s",
+        len(selected["paper"]),
+        len(selected["blog"]),
+        len(selected["news"]),
+    )
+    return {"selected": selected}
 
 
-def _store_papers(state: GraphState) -> GraphState:
-    papers = state.get("valuable_papers") or []
+def _build_valuable_items(state: GraphState) -> GraphState:
+    selected = state.get("selected", {})
+    paper_ids = set(selected.get("paper", []))
+    papers: list[ArxivEntry] = []
+
+    for item in state.get("candidates", {}).get("paper", []):
+        if item.get("id") not in paper_ids:
+            continue
+        papers.append(
+            ArxivEntry(
+                arxiv_id=item.get("id", ""),
+                title=item.get("title", ""),
+                summary=item.get("summary", ""),
+                url=item.get("url", ""),
+                published=datetime.fromisoformat(item["published"])
+                if item.get("published")
+                else None,
+                updated=datetime.fromisoformat(item["updated"])
+                if item.get("updated")
+                else None,
+                authors=item.get("authors", []) or [],
+            )
+        )
+
+    return {"valuable_papers": papers}
+
+
+def _store_items(state: GraphState) -> GraphState:
+    papers = state.get("valuable_papers", [])
     if not papers:
         logger.info("store_papers no valuable papers to save")
         return {"stored_papers": []}
@@ -386,43 +473,21 @@ def _store_papers(state: GraphState) -> GraphState:
     return {"stored_papers": stored}
 
 
-def _paper_dir() -> "Path":
-    return Path("/home/deming/work/collection/paper")
-
-
-def _arxiv_pdf_url(arxiv_id: str) -> str:
-    if "/abs/" in arxiv_id:
-        return arxiv_id.replace("/abs/", "/pdf/") + ".pdf"
-    if arxiv_id.endswith(".pdf"):
-        return arxiv_id
-    return arxiv_id + ".pdf"
-
-
 def build_graph() -> StateGraph:
     graph = StateGraph(GraphState)
-    graph.add_node("intent", _extract_intent)
-    graph.add_node("inject_intent", _inject_intent_message)
-    graph.add_node("agent", _agent_node)
-    graph.add_node("tools", ToolNode([search_arxiv_tool]))
-    graph.add_node("force_read", _force_read_prompt)
-    graph.add_node("auto_read_pdfs", _auto_read_pdfs)
-    graph.add_node("collect_results", _collect_results)
-    graph.add_node("evaluate_each", _evaluate_each)
-    graph.add_node("store_papers", _store_papers)
-    graph.set_entry_point("intent")
-    graph.add_edge("intent", "inject_intent")
-    graph.add_edge("inject_intent", "agent")
-    graph.add_conditional_edges(
-        "agent",
-        _needs_tool_followup,
-        {"tools": "tools", "force_read": "force_read", "collect_results": "collect_results"},
-    )
-    graph.add_edge("tools", "agent")
-    graph.add_edge("force_read", "collect_results")
-    graph.add_edge("collect_results", "auto_read_pdfs")
-    graph.add_edge("auto_read_pdfs", "evaluate_each")
-    graph.add_edge("evaluate_each", "store_papers")
-    graph.add_edge("store_papers", END)
+    graph.add_node("plan_tools", _plan_tools)
+    graph.add_node("execute_tools", _execute_tools)
+    graph.add_node("read_pdfs_for_papers", _read_pdfs_for_papers)
+    graph.add_node("final_select", _final_select)
+    graph.add_node("build_valuable_items", _build_valuable_items)
+    graph.add_node("store", _store_items)
+    graph.set_entry_point("plan_tools")
+    graph.add_edge("plan_tools", "execute_tools")
+    graph.add_edge("execute_tools", "read_pdfs_for_papers")
+    graph.add_edge("read_pdfs_for_papers", "final_select")
+    graph.add_edge("final_select", "build_valuable_items")
+    graph.add_edge("build_valuable_items", "store")
+    graph.add_edge("store", END)
     return graph
 
 
@@ -438,45 +503,13 @@ def run_collection(
     max_results: int,
     pdf_max_chars: int,
 ) -> GraphResult:
-    if content_type not in ("paper", "all"):
+    if content_type not in ("paper", "all", "news", "blog"):
         return GraphResult(stored_papers=0)
-    logger.info(
-        "run_collection topic=%s start=%s end=%s max_results=%s pdf_max_chars=%s",
-        topic,
-        start,
-        end,
-        max_results,
-        pdf_max_chars,
-    )
     graph = build_graph().compile()
-    start_iso = start.isoformat() if start else None
-    end_iso = end.isoformat() if end else None
-    requirements = topic
-    system = SystemMessage(
-        content=(
-            "You are a research assistant that uses tools to find and evaluate papers.\n"
-            "Process:\n"
-            "1) Use search_arxiv_tool with the provided search_query and time range.\n"
-            "2) PDFs will be read automatically for each candidate.\n"
-            "3) Keep papers only if they match the core topic AND mention all must_mention keywords.\n"
-            "Output: a JSON array of paper IDs to keep, no extra text.\n"
-            "If none match, output [] exactly."
-        )
-    )
-    user = HumanMessage(
-        content=(
-            f"Requirements: {requirements}\n"
-            f"Start ISO: {start_iso}\n"
-            f"End ISO: {end_iso}\n"
-            f"Max results: {max_results}\n"
-            f"PDF max chars: {pdf_max_chars}\n"
-            "Use search_query and must_mention provided by intent extraction."
-        )
-    )
     result = graph.invoke(
         {
             "topic": topic,
-            "requirements": requirements,
+            "requirements": topic,
             "content_type": content_type,
             "start": start,
             "end": end,
@@ -486,11 +519,13 @@ def run_collection(
             "iflow_model": iflow_model,
             "max_results": max_results,
             "pdf_max_chars": pdf_max_chars,
-            "messages": [system, user],
             "search_query": "",
             "must_mention": [],
-            "papers": {},
-            "pdf_texts": {},
+            "plan": [],
+            "tool_results": {},
+            "candidates": {"paper": [], "blog": [], "news": []},
+            "pdf_evidence": {},
+            "selected": {"paper": [], "blog": [], "news": []},
             "valuable_papers": [],
             "stored_papers": [],
         }
@@ -498,13 +533,13 @@ def run_collection(
     return GraphResult(stored_papers=len(result.get("stored_papers", [])))
 
 
-def parse_datetime(value: str, tz: str) -> datetime:
-    from zoneinfo import ZoneInfo
+def _paper_dir() -> Path:
+    return Path("/home/deming/work/collection/paper")
 
-    value = value.strip()
-    if "T" not in value:
-        value = value + "T00:00:00"
-    dt = datetime.fromisoformat(value)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=ZoneInfo(tz))
-    return dt.astimezone(timezone.utc)
+
+def _arxiv_pdf_url(arxiv_id: str) -> str:
+    if "/abs/" in arxiv_id:
+        return arxiv_id.replace("/abs/", "/pdf/") + ".pdf"
+    if arxiv_id.endswith(".pdf"):
+        return arxiv_id
+    return arxiv_id + ".pdf"
