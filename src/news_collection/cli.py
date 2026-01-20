@@ -26,6 +26,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--max-results", type=int, default=50)
     parser.add_argument("--pdf-max-chars", type=int, default=16000)
     parser.add_argument("--log-level", default="INFO")
+    parser.add_argument("--session-id")
     return parser.parse_args()
 
 
@@ -57,6 +58,7 @@ def main() -> int:
         iflow_key=args.iflow_key,
         iflow_base_url=args.iflow_base_url,
         iflow_model=args.iflow_model,
+        session_id=args.session_id,
         max_results=args.max_results,
         pdf_max_chars=args.pdf_max_chars,
     )

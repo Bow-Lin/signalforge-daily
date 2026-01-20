@@ -1,1 +1,1 @@
-__all__ = ["cli", "graph", "arxiv", "storage", "iflow", "pdf_tools"]
+__all__ = ["cli", "graph", "arxiv", "storage", "iflow", "pdf_tools", "telemetry"]

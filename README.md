@@ -1,9 +1,9 @@
 # News Collection (LangGraph)
 
 Collect topic-related content with LangGraph. Currently implements paper collection via arXiv.
-Uses LangGraph's tool calling to let an LLM decide which papers are valuable after reading PDFs.
+Uses a two-step LLM plan-and-select flow with sequential tool execution and PDF evidence.
 
-## Usage
+## Setup
 
 1) Install dependencies:
 
@@ -11,7 +11,23 @@ Uses LangGraph's tool calling to let an LLM decide which papers are valuable aft
 pip install -r requirements.txt
 ```
 
-2) Run:
+2) Set API key:
+
+```bash
+export IFLOW_API_KEY=your_key
+```
+
+3) (Optional) Enable Langfuse:
+
+```bash
+export LANGFUSE_PUBLIC_KEY=your_public_key
+export LANGFUSE_SECRET_KEY=your_secret_key
+export LANGFUSE_HOST=https://cloud.langfuse.com
+```
+
+## Usage
+
+Run a paper collection:
 
 ```bash
 python -m news_collection.cli \
@@ -27,3 +43,23 @@ python -m news_collection.cli \
 
 Collected items are saved under `/home/deming/work/collection/paper/papers_latest.jsonl`.
 Downloaded PDFs are cached under `/home/deming/work/collection/paper/pdf_cache/`.
+
+## Graph Visualization
+
+Print Mermaid source:
+
+```bash
+python /home/deming/work/news_collection/scripts/graph_viz.py --format mermaid
+```
+
+Write Mermaid to file:
+
+```bash
+python /home/deming/work/news_collection/scripts/graph_viz.py --format mermaid --out /tmp/graph.mmd
+```
+
+Write PNG (if mermaid rendering is available):
+
+```bash
+python /home/deming/work/news_collection/scripts/graph_viz.py --format png --out /tmp/graph.png
+```
