@@ -1,0 +1,12 @@
+{
+  "topic": "robot",
+  "requirements": "robot",
+  "content_type": "paper",
+  "start": "2025-12-01",
+  "end": "2026-01-20",
+  "tz": "Asia/Shanghai",
+  "iflow_model": "qwen3-max",
+  "max_results": 5,
+  "pdf_max_chars": 16000,
+  "session_id": "chat-session-234"
+}

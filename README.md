@@ -32,6 +32,7 @@ Run a paper collection:
 ```bash
 python -m news_collection.cli \
   --topic "RTL 代码生成 且使用cvdp数据集或RealBench数据集" \
+  --requirements "使用cvdp数据集或RealBench数据集" \
   --content-type paper \
   --start "2025-09-01" \
   --end "2026-01-15" \
@@ -39,6 +40,12 @@ python -m news_collection.cli \
   --iflow-model "qwen3-max" \
   --max-results 5 \
   --pdf-max-chars 16000
+```
+
+You can also run via a config file:
+
+```bash
+python -m news_collection.cli --config /home/deming/work/news_collection/config.json
 ```
 
 Collected items are saved under `/home/deming/work/collection/paper/papers_latest.jsonl`.

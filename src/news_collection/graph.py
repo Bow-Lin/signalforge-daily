@@ -16,7 +16,7 @@ from .arxiv import ArxivEntry, fetch_arxiv
 from .iflow import load_iflow_config
 from .pdf_tools import fetch_and_read_pdf
 from .storage import store_papers
-from .telemetry import end_trace, flush, get_trace_url, log_generation, log_span, session_context, start_trace
+from .telemetry import flush, log_generation, log_span, start_trace, update_trace_name
 
 
 ContentType = Literal["paper", "news", "blog", "all"]
@@ -36,7 +36,6 @@ class GraphState(TypedDict, total=False):
     iflow_model: str | None
     session_id: str | None
     trace_id: str | None
-    root_span_id: str | None
     search_query: str
     must_mention: list[str]
     plan: list[dict]
@@ -160,7 +159,8 @@ def _build_llm(state: GraphState, temperature: float, max_tokens: int) -> ChatOp
 def _plan_tools(state: GraphState) -> GraphState:
     llm = _build_llm(state, temperature=0.1, max_tokens=1200)
     trace_id = state.get("trace_id")
-    requirements = state.get("requirements") or state.get("topic", "")
+    topic = state.get("topic", "")
+    requirements = state.get("requirements") or topic
     start_iso = state.get("start").isoformat() if state.get("start") else None
     end_iso = state.get("end").isoformat() if state.get("end") else None
     content_type = state.get("content_type", "paper")
@@ -182,6 +182,7 @@ def _plan_tools(state: GraphState) -> GraphState:
             "- include start_iso/end_iso if provided, else null\n"
             "- if content_type=paper, plan only arxiv\n"
             "- if content_type=all, plan multiple tools\n\n"
+            f"topic: {topic}\n"
             f"requirements: {requirements}\n"
             f"content_type: {content_type}\n"
             f"start_iso: {start_iso}\n"
@@ -202,7 +203,7 @@ def _plan_tools(state: GraphState) -> GraphState:
         {
             "tool": default_tool,
             "args": {
-                "query": requirements,
+                "query": topic,
                 "start_iso": start_iso,
                 "end_iso": end_iso,
                 "max_results": max_results,
@@ -212,7 +213,7 @@ def _plan_tools(state: GraphState) -> GraphState:
 
     try:
         payload = json.loads(content)
-        search_query = str(payload.get("search_query", "")).strip() or requirements
+        search_query = str(payload.get("search_query", "")).strip() or topic
         must_mention = payload.get("must_mention", [])
         if not isinstance(must_mention, list):
             must_mention = []
@@ -220,7 +221,7 @@ def _plan_tools(state: GraphState) -> GraphState:
         if not isinstance(plan, list) or not plan:
             plan = default_plan
     except Exception:
-        search_query = requirements
+        search_query = topic
         must_mention = []
         plan = default_plan
 
@@ -255,6 +256,7 @@ def _plan_tools(state: GraphState) -> GraphState:
 
     logger.info("plan_tools must_mention=%s plan_steps=%s", must_mention, len(normalized_plan))
     plan_input = {
+        "topic": topic,
         "requirements": requirements,
         "content_type": content_type,
         "start_iso": start_iso,
@@ -271,7 +273,6 @@ def _plan_tools(state: GraphState) -> GraphState:
         input=plan_input,
         output={"search_query": search_query, "must_mention": must_mention, "plan": normalized_plan},
         usage=usage,
-        parent_span_id=state.get("root_span_id"),
     )
     return {
         "search_query": search_query,
@@ -306,7 +307,6 @@ def _execute_tools(state: GraphState) -> GraphState:
                 input=args,
                 output={"count": len(output)},
                 as_type="tool",
-                parent_span_id=state.get("root_span_id"),
             )
         except Exception as exc:
             logger.warning("execute_tools failed tool=%s err=%s", tool_name, exc)
@@ -317,7 +317,6 @@ def _execute_tools(state: GraphState) -> GraphState:
                 output={"count": 0},
                 error=str(exc),
                 as_type="tool",
-                parent_span_id=state.get("root_span_id"),
             )
             output = []
         results[f"step_{idx}"] = output
@@ -401,7 +400,6 @@ def _read_pdfs_for_papers(state: GraphState) -> GraphState:
             output={"snippet_len": len(snippet), "mentions": mentions},
             error=None if text else "empty_text",
             as_type="tool",
-            parent_span_id=state.get("root_span_id"),
         )
         logger.info(
             "read_pdfs arxiv_id=%s snippet_len=%s mentions=%s",
@@ -416,7 +414,8 @@ def _read_pdfs_for_papers(state: GraphState) -> GraphState:
 def _final_select(state: GraphState) -> GraphState:
     llm = _build_llm(state, temperature=0.1, max_tokens=1200)
     trace_id = state.get("trace_id")
-    requirements = state.get("requirements") or state.get("topic", "")
+    topic = state.get("topic", "")
+    requirements = state.get("requirements") or topic
     must_mention = state.get("must_mention", [])
     candidates = state.get("candidates", {})
     pdf_evidence = state.get("pdf_evidence", {})
@@ -457,6 +456,7 @@ def _final_select(state: GraphState) -> GraphState:
     papers_text = "\n\n".join(paper_blocks)
     user = HumanMessage(
         content=(
+            f"topic: {topic}\n"
             f"requirements: {requirements}\n"
             f"must_mention: {must_mention}\n\n"
             "PAPERS:\n"
@@ -496,6 +496,7 @@ def _final_select(state: GraphState) -> GraphState:
         len(selected["news"]),
     )
     final_input = {
+        "topic": topic,
         "requirements": requirements,
         "must_mention": must_mention,
         "paper_content": papers_text[:500],
@@ -514,7 +515,6 @@ def _final_select(state: GraphState) -> GraphState:
         input=final_input,
         output=selected,
         usage=usage,
-        parent_span_id=state.get("root_span_id"),
     )
     return {"selected": selected}
 
@@ -556,7 +556,6 @@ def _store_items(state: GraphState) -> GraphState:
             name="store_papers",
             input={"count": 0},
             output={"stored": 0},
-            parent_span_id=state.get("root_span_id"),
         )
         return {"stored_papers": []}
     stored = store_papers(papers, _paper_dir())
@@ -566,7 +565,6 @@ def _store_items(state: GraphState) -> GraphState:
         name="store_papers",
         input={"count": len(papers)},
         output={"stored": len(stored)},
-        parent_span_id=state.get("root_span_id"),
     )
     return {"stored_papers": stored}
 
@@ -591,6 +589,7 @@ def build_graph() -> StateGraph:
 
 def run_collection(
     topic: str,
+    requirements: str,
     content_type: ContentType,
     start: datetime | None,
     end: datetime | None,
@@ -605,16 +604,15 @@ def run_collection(
     if content_type not in ("paper", "all", "news", "blog"):
         return GraphResult(stored_papers=0)
     graph = build_graph().compile()
-    trace_id, root_span_id = start_trace(
+    trace_id = start_trace(
         name="news_collection_run",
-        input={"topic": topic, "content_type": content_type},
+        input={"topic": topic, "requirements": requirements, "content_type": content_type},
         session_id=session_id,
     )
-    logger.info("trace_ids trace_id=%s root_span_id=%s", trace_id, root_span_id)
-    logger.info("trace_url=%s", get_trace_url(trace_id))
+    logger.info("trace_id=%s", trace_id)
     init_state = {
         "topic": topic,
-        "requirements": topic,
+        "requirements": requirements or topic,
         "content_type": content_type,
         "start": start,
         "end": end,
@@ -624,7 +622,6 @@ def run_collection(
         "iflow_model": iflow_model,
         "session_id": session_id,
         "trace_id": trace_id,
-        "root_span_id": root_span_id,
         "max_results": max_results,
         "pdf_max_chars": pdf_max_chars,
         "search_query": "",
@@ -637,9 +634,13 @@ def run_collection(
         "valuable_papers": [],
         "stored_papers": [],
     }
-    with session_context(session_id):
-        result = graph.invoke(init_state)
-    end_trace(trace_id)
+    result = graph.invoke(init_state)
+    update_trace_name(
+        trace_id,
+        name="news_collection_run",
+        session_id=session_id,
+        input={"topic": topic, "requirements": requirements, "content_type": content_type},
+    )
     flush()
     return GraphResult(stored_papers=len(result.get("stored_papers", [])))
 

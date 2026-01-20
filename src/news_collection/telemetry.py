@@ -8,8 +8,6 @@ import logging
 _langfuse_client = None
 _dotenv_loaded = False
 _logged_missing = False
-_root_spans: dict[str, object] = {}
-_trace_meta: dict[str, dict] = {}
 logger = logging.getLogger(__name__)
 
 
@@ -58,10 +56,10 @@ def start_trace(
     input: Any | None = None,
     metadata: dict | None = None,
     session_id: str | None = None,
-) -> tuple[Optional[str], Optional[str]]:
+) -> Optional[str]:
     client = get_langfuse()
     if not client:
-        return None, None
+        return None
     try:
         trace_id = client.create_trace_id()
         span = client.start_span(
@@ -70,13 +68,6 @@ def start_trace(
             input=input,
             metadata=metadata,
         )
-        _root_spans[trace_id] = span
-        _trace_meta[trace_id] = {
-            "name": name,
-            "input": input,
-            "metadata": metadata,
-            "session_id": session_id,
-        }
         try:
             span.update_trace(
                 name=name,
@@ -86,20 +77,12 @@ def start_trace(
             )
         except Exception:
             pass
-        try:
-            trace_url = client.get_trace_url(trace_id)
-        except Exception:
-            trace_url = None
-        logger.info(
-            "langfuse trace started trace_id=%s span_id=%s trace_url=%s",
-            trace_id,
-            span.id,
-            trace_url,
-        )
-        return trace_id, span.id
+        span.end()
+        logger.info("langfuse trace started trace_id=%s", trace_id)
+        return trace_id
     except Exception:
         logger.warning("langfuse trace start failed", exc_info=True)
-        return None, None
+        return None
 
 
 def log_span(
@@ -110,17 +93,13 @@ def log_span(
     metadata: dict | None = None,
     error: str | None = None,
     as_type: str = "span",
-    parent_span_id: Optional[str] = None,
 ) -> None:
     client = get_langfuse()
     if not client or not trace_id:
         return
     try:
-        trace_context = {"trace_id": trace_id}
-        if parent_span_id:
-            trace_context["parent_span_id"] = parent_span_id
         obs = client.start_observation(
-            trace_context=trace_context,
+            trace_context={"trace_id": trace_id},
             name=name,
             as_type=as_type,
             input=input,
@@ -143,17 +122,13 @@ def log_generation(
     usage: dict | None = None,
     metadata: dict | None = None,
     error: str | None = None,
-    parent_span_id: Optional[str] = None,
 ) -> None:
     client = get_langfuse()
     if not client or not trace_id:
         return
     try:
-        trace_context = {"trace_id": trace_id}
-        if parent_span_id:
-            trace_context["parent_span_id"] = parent_span_id
         gen = client.start_observation(
-            trace_context=trace_context,
+            trace_context={"trace_id": trace_id},
             name=name,
             as_type="generation",
             input=input,
@@ -179,56 +154,32 @@ def flush() -> None:
         return
 
 
-def get_trace_url(trace_id: Optional[str]) -> Optional[str]:
+def update_trace_name(
+    trace_id: Optional[str],
+    name: str,
+    session_id: Optional[str] = None,
+    input: Any | None = None,
+    metadata: dict | None = None,
+) -> None:
     client = get_langfuse()
     if not client or not trace_id:
-        return None
-    try:
-        return client.get_trace_url(trace_id)
-    except Exception:
-        return None
-
-
-def end_trace(trace_id: Optional[str]) -> None:
-    if not trace_id:
-        return
-    span = _root_spans.pop(trace_id, None)
-    if not span:
         return
     try:
-        meta = _trace_meta.pop(trace_id, {})
-        if meta:
-            try:
-                span.update_trace(
-                    name=meta.get("name"),
-                    input=meta.get("input"),
-                    metadata=meta.get("metadata"),
-                    session_id=meta.get("session_id"),
-                )
-            except Exception:
-                pass
+        span = client.start_span(
+            trace_context={"trace_id": trace_id},
+            name=name,
+            input=input,
+            metadata=metadata,
+        )
+        try:
+            span.update_trace(
+                name=name,
+                input=input,
+                metadata=metadata,
+                session_id=session_id,
+            )
+        except Exception:
+            pass
         span.end()
     except Exception:
         return
-
-
-def session_context(session_id: Optional[str]):
-    try:
-        from langfuse import propagate_attributes
-    except Exception:
-        class _Noop:
-            def __enter__(self):
-                return None
-            def __exit__(self, exc_type, exc, tb):
-                return False
-        return _Noop()
-
-    if not session_id:
-        class _Noop:
-            def __enter__(self):
-                return None
-            def __exit__(self, exc_type, exc, tb):
-                return False
-        return _Noop()
-
-    return propagate_attributes(session_id=session_id)
