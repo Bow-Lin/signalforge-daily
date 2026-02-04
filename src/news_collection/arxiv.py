@@ -44,10 +44,40 @@ def _parse_dt(s: str) -> Optional[datetime]:
         return None
 
 
+_ADVANCED_RE = re.compile(r"(:)|\b(AND|OR|NOT)\b", flags=re.IGNORECASE)
+
+
+def looks_advanced_arxiv_query(q: str) -> bool:
+    q = (q or "").strip()
+    if not q:
+        return False
+    return bool(_ADVANCED_RE.search(q))
+
+
 def _quote_term(term: str) -> str:
-    term = term.strip()
+    """
+    Quote a term for arXiv query.
+    We keep it simple: escape double-quotes and wrap in quotes.
+    """
+    term = (term or "").strip()
     term = term.replace('"', '\\"')
     return f'"{term}"'
+
+
+def _split_tokens(q: str) -> list[str]:
+    q = (q or "").strip()
+    if not q:
+        return []
+    # Keep hyphens/underscores inside tokens; split on whitespace.
+    toks = [t for t in re.split(r"\s+", q) if t]
+    # Dedup while preserving order.
+    seen: set[str] = set()
+    out: list[str] = []
+    for t in toks:
+        if t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out
 
 
 def build_arxiv_search_query(
@@ -55,51 +85,123 @@ def build_arxiv_search_query(
     *,
     categories: Optional[Iterable[str]] = None,
     extra_any: Optional[Iterable[str]] = None,
+    allow_all_field_fallback: bool = True,
 ) -> str:
     """
     Build a robust arXiv API 'search_query' string.
 
-    Strategy:
-    - If user_query already looks like advanced arXiv syntax (contains ':' or AND/OR/NOT),
-      pass it through (lightly trimmed).
-    - Otherwise:
-        (all:"<full phrase>" OR (all:"t1" AND all:"t2" ...))
-      and optionally:
+    Goals:
+    - Prefer ti:/abs: over all: to reduce noise.
+    - If user already provides advanced arXiv syntax (contains ':' or AND/OR/NOT),
+      pass it through (lightly trimmed), and only append optional cat filters.
+    - Otherwise generate an OR-combination to improve recall:
+        (
+          (ti:"full phrase" OR abs:"full phrase")
+          OR ((ti:"t1" AND ti:"t2" ...) OR (abs:"t1" AND abs:"t2" ...))
+          OR (all:"full phrase")              # optional fallback
+        )
+      And optionally:
         AND (cat:cs.AR OR cat:eess.SY ...)
-      and optionally:
-        AND (all:"extra1" OR all:"extra2" ...)
+      And optionally:
+        OR (all:"extra1" OR all:"extra2" ...)   # soft expansion, NOT hard filter
     """
-    q = user_query.strip()
+    q = (user_query or "").strip()
     if not q:
         raise ValueError("user_query is empty")
 
-    # If user already provides advanced query, do not rewrite aggressively.
-    if (":" in q) or re.search(r"\b(AND|OR|NOT)\b", q, flags=re.IGNORECASE):
+    # If user already provides advanced query, do not rewrite it.
+    if looks_advanced_arxiv_query(q):
         core = q
+        clauses = [f"({core})"]
     else:
-        tokens = [t for t in re.split(r"\s+", q) if t]
-        phrase_part = f'all:{_quote_term(q)}' if len(tokens) >= 2 else ""
-        and_part = " AND ".join(f'all:{_quote_term(t)}' for t in tokens) if tokens else ""
+        tokens = _split_tokens(q)
 
-        parts = [p for p in [phrase_part, and_part] if p]
-        # OR the phrase with the AND-of-tokens to avoid being too strict.
-        core = " OR ".join(f"({p})" for p in parts)
+        phrase_clause = ""
+        if len(tokens) >= 2:
+            phrase = _quote_term(q)
+            phrase_clause = f"(ti:{phrase} OR abs:{phrase})"
 
-    clauses = [f"({core})"]
+        token_ti_and = ""
+        token_abs_and = ""
+        if tokens:
+            token_ti_and = " AND ".join(f"ti:{_quote_term(t)}" for t in tokens)
+            token_abs_and = " AND ".join(f"abs:{_quote_term(t)}" for t in tokens)
 
+        token_clause = ""
+        if token_ti_and and token_abs_and:
+            token_clause = f"(({token_ti_and}) OR ({token_abs_and}))"
+        elif token_ti_and:
+            token_clause = f"({token_ti_and})"
+
+        all_fallback = ""
+        if allow_all_field_fallback and len(tokens) >= 2:
+            all_fallback = f"(all:{_quote_term(q)})"
+        elif allow_all_field_fallback and len(tokens) == 1:
+            # For single token, all: is a reasonable fallback.
+            all_fallback = f"(all:{_quote_term(tokens[0])})"
+
+        parts = [p for p in [phrase_clause, token_clause, all_fallback] if p]
+        core = " OR ".join(parts) if parts else f"(all:{_quote_term(q)})"
+
+        clauses = [f"({core})"]
+
+    # Category filter is a true AND constraint (when provided).
     if categories:
         cats = [c.strip() for c in categories if c and c.strip()]
         if cats:
             cat_expr = " OR ".join(f"cat:{c}" for c in cats)
             clauses.append(f"({cat_expr})")
 
+    # extra_any is a SOFT expansion: we OR it into the core rather than AND-filtering.
     if extra_any:
         extras = [e.strip() for e in extra_any if e and e.strip()]
         if extras:
             extra_expr = " OR ".join(f'all:{_quote_term(e)}' for e in extras)
-            clauses.append(f"({extra_expr})")
+            # Expand recall: (existing) OR (extra terms)
+            clauses[0] = f"({clauses[0]} OR ({extra_expr}))"
 
     return " AND ".join(clauses)
+
+
+def _default_domain_hints(query: str) -> list[str]:
+    """
+    Domain hints used as soft expansion for recall.
+    Keep these broad; final selection will do semantic filtering.
+    """
+    # You can tune this list per your project domain.
+    return [
+        "RTL",
+        "Verilog",
+        "SystemVerilog",
+        "HDL",
+        "EDA",
+        "hardware",
+        "chip",
+        "logic synthesis",
+        "spec-to-rtl",
+    ]
+
+
+def _pick_sort_by(
+    query: str,
+    *,
+    start_dt: Optional[datetime],
+    end_dt: Optional[datetime],
+    user_sort_by: Optional[str],
+) -> str:
+    """
+    Heuristic:
+    - If user explicitly sets sort_by: respect it.
+    - If a time window is provided, submittedDate is usually preferred.
+    - If query is non-advanced and no time window, relevance tends to match website better.
+    """
+    if user_sort_by:
+        return user_sort_by
+    if start_dt or end_dt:
+        return "submittedDate"
+    if looks_advanced_arxiv_query(query):
+        return "submittedDate"
+    return "relevance"
 
 
 def fetch_arxiv(
@@ -109,33 +211,40 @@ def fetch_arxiv(
     categories: Optional[list[str]] = None,
     start_dt: Optional[datetime] = None,
     end_dt: Optional[datetime] = None,
-    sort_by: str = "submittedDate",  # "relevance" may exist; keep submittedDate for stable behavior
+    sort_by: Optional[str] = None,  # None = auto
     sort_order: str = "descending",
     debug: bool = False,
+    extra_any: Optional[list[str]] = None,
 ) -> list[ArxivEntry]:
     """
     Fetch arXiv entries via Atom API.
 
-    Note: arXiv API does not support true date-range filtering in the query reliably for all needs,
-    so we post-filter by published time if start_dt/end_dt are provided.
+    Note: arXiv API does not support true date-range filtering in the query reliably,
+    so we post-filter by (published or updated) time if start_dt/end_dt are provided.
     """
     if start_dt and start_dt.tzinfo is None:
         start_dt = start_dt.replace(tzinfo=timezone.utc)
     if end_dt and end_dt.tzinfo is None:
         end_dt = end_dt.replace(tzinfo=timezone.utc)
 
+    sort_by_final = _pick_sort_by(query, start_dt=start_dt, end_dt=end_dt, user_sort_by=sort_by)
+
+    # Soft expansion: always enabled unless explicitly overridden by extra_any=[].
+    if extra_any is None:
+        extra_any = _default_domain_hints(query)
+
     search_query = build_arxiv_search_query(
         query,
         categories=categories,
-        # Optional: add domain hints to improve precision for RTL/EDA topics
-        extra_any=["RTL", "Verilog", "SystemVerilog", "EDA", "hardware", "chip"] if categories else None,
+        extra_any=extra_any,
+        allow_all_field_fallback=True,
     )
 
     params = {
         "search_query": search_query,
         "start": 0,
         "max_results": max_results,
-        "sortBy": sort_by,
+        "sortBy": sort_by_final,
         "sortOrder": sort_order,
     }
 
@@ -147,8 +256,7 @@ def fetch_arxiv(
     resp = requests.get(ARXIV_API, params=params, timeout=30)
     if debug:
         print(f"[arxiv] status={resp.status_code} bytes={len(resp.text)}")
-        # Print a small prefix so you can confirm it's Atom feed, not an error page
-        print(f"[arxiv] body_prefix={resp.text[:120].replace(chr(10), ' ')}")
+        print(f"[arxiv] body_prefix={resp.text[:160].replace(chr(10), ' ')}")
 
     resp.raise_for_status()
     root = ET.fromstring(resp.text)
@@ -192,7 +300,8 @@ def fetch_arxiv(
         entries = filtered
 
     if debug:
-        top = entries[:5]
+        top = entries[:10]
+        print(f"[arxiv] sortBy={sort_by_final} returned={len(entries)}")
         print("[arxiv] top_titles:")
         for i, e in enumerate(top, 1):
             print(f"  {i}. {e.title} | {e.url}")

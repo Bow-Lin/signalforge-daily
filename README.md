@@ -48,8 +48,17 @@ You can also run via a config file:
 python -m news_collection.cli --config /home/deming/work/news_collection/config.json
 ```
 
-Collected items are saved under `/home/deming/work/collection/paper/papers_latest.jsonl`.
-Downloaded PDFs are cached under `/home/deming/work/collection/paper/pdf_cache/`.
+Collected items are saved under `paper/papers_latest.jsonl`.
+Downloaded PDFs are cached under `paper/pdf_cache/`.
+Selected PDFs are copied to `paper/pdfs/`.
+
+Run blog tracker:
+
+```
+python -m news_collection.blog_cli --source all
+```
+
+Blog outputs are saved under `blog/`, and sources are tracked in `blog/sources.txt` (first line is `last_run_at\t<iso>`).
 
 ## Graph Visualization
 
