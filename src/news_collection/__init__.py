@@ -7,4 +7,6 @@ __all__ = [
     "pdf_tools",
     "telemetry",
     "blog_tracker",
+    "digest",
+    "digest_cli",
 ]
