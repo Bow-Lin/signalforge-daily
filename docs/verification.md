@@ -1,0 +1,52 @@
+# Verification
+
+## Project Type
+Python 3.10+ package using `pyproject.toml`, `uv`, and `pytest`.
+
+## Environment Setup
+Preferred:
+
+```bash
+uv sync
+```
+
+Alternative:
+
+```bash
+pip install -r requirements.txt
+pip install -e .
+```
+
+## Standard Verification Matrix
+| Change Type | Commands |
+| --- | --- |
+| Python business logic | `uv run python -m pytest -q` |
+| Digest parser/report behavior | `uv run python -m pytest -q tests/test_digest.py` plus full pytest when shared code changes |
+| CLI behavior | `uv run python -m pytest -q`; optionally run the relevant `uv run python -m news_collection.<cli> --help` |
+| Harness or docs only | `bash scripts/harness_check.sh` when available; otherwise equivalent file-presence check |
+| Graph visualization utility | `uv run python scripts/graph_viz.py --format mermaid --out /tmp/graph.mmd` on POSIX, or a local temp path on Windows |
+
+## Runtime Smoke Commands
+Use these when the task affects a specific CLI and required credentials/network are available:
+
+```bash
+uv run python -m news_collection.cli --config config.json
+uv run python -m news_collection.blog_cli --source all
+uv run python -m news_collection.digest_cli --hours 24 --top-n 15 --lang zh
+```
+
+## Harness Check
+Primary command:
+
+```bash
+bash scripts/harness_check.sh
+```
+
+If `bash` is unavailable, run an equivalent file existence check for all files listed in `scripts/harness_check.sh` and record that the shell script itself was not executed.
+
+## Failure and Skipped Verification Policy
+When verification fails or cannot run:
+1. Record the command, result, and reason in `.harness/session-log.md`.
+2. Add recurring or non-obvious failures to `docs/error-journal.md`.
+3. State the residual risk in the final response or handoff.
+4. Do not claim completion without either passing evidence or an explicit skipped-verification rationale.

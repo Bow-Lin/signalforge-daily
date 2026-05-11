@@ -1,57 +1,60 @@
-# Repository Guidelines
+# Project Harness Protocol
 
-## Project Structure & Module Organization
-The codebase uses a `src/` layout:
-- `src/news_collection/`: core package and CLIs (`cli.py`, `blog_cli.py`, `digest_cli.py`), graph pipeline, storage, and PDF helpers.
-- `src/news_collection/blog_tracker/`: blog tracking domain logic and source adapters.
-- `src/news_collection/digest.py`: Python daily digest pipeline (RSS fetch -> AI scoring -> summarization -> markdown report).
-- `src/news_collection/digest_feeds.py`: default RSS sources list for digest.
-- `scripts/graph_viz.py`: graph visualization utility.
-- `config.json`: example runtime config.
+## Agent Role
+You are an engineering agent working in the `news_collection` repository. Your job is to make changes that are recoverable across sessions, verified by commands, and recorded in the project harness before handoff.
 
-Generated outputs are ignored by git and should stay local:
-- `paper/` (paper results, PDF cache, selected PDFs)
-- `blog/` (blog sync outputs and source tracking)
-- `output/` (digest reports)
+## Core Principle
+Reliable project files carry state; chat history is not the source of truth. Before acting, restore context from the harness. Before claiming completion, run the relevant checks or record why they could not run.
 
-## Build, Test, and Development Commands
-- Preferred environment setup: `uv sync`
-- `uv run python -m news_collection.cli --config config.json`: run paper/news collection from config.
-- `uv run python -m news_collection.blog_cli --source all`: sync all supported blog sources.
-- `uv run python -m news_collection.digest_cli --hours 24 --top-n 15 --lang zh`: generate daily digest report.
-- `uv run python scripts/graph_viz.py --format mermaid --out /tmp/graph.mmd`: render graph definition.
-- `uv run python -m pytest -q`: run tests.
-- Alternative (pip): `pip install -r requirements.txt && pip install -e .`
+## Required Reading Order
+At the start of a new session, read:
+1. `current-task.md`
+2. `.harness/session-state.json`
+3. `.harness/session-log.md`
+4. `docs/decisions.md`
+5. `docs/error-journal.md`
+6. Relevant sections of `docs/architecture.md`, `docs/verification.md`, and `docs/coding-guidelines.md`
 
-## Coding Style & Naming Conventions
-- Python 3.10+; follow PEP 8 with 4-space indentation.
-- Use `snake_case` for functions/variables, `PascalCase` for classes, and explicit type hints on public functions.
-- Keep imports grouped (stdlib, third-party, local) and favor small, focused functions.
-- Prefer CLI/config argument names that map directly to internal parameter names (for example `--max-results` -> `max_results`).
+Then output a short Session Briefing before modifying files.
 
-## Testing Guidelines
-- Framework: `pytest` (declared in `pyproject.toml` dev dependencies).
-- Place tests under a top-level `tests/` directory using `test_*.py` naming.
-- Focus on behavior of CLI entry points, graph flow decisions, storage read/write paths, and digest parsing/report rendering.
-- For new features, add at least one success-path test and one failure/edge-case test.
+## Operating Rules
+- Keep business logic in `src/news_collection/` and tests in `tests/`.
+- Do not rely on generated output directories as source: `paper/`, `blog/`, `output/`, and `logs/` stay local.
+- Do not commit secrets. `.env` is local only; API keys come from environment variables.
+- Use `uv` as the preferred environment manager.
+- Preserve user changes that are outside the requested scope.
 
-## Commit & Pull Request Guidelines
-- Keep commit messages short, imperative, and scoped (examples from history: `add rss`, `fix arxiv search bug`, `refactor: ...`).
-- Prefer one logical change per commit.
-- PRs should include:
-  - What changed and why.
-  - How to run/verify (`python -m ...`, `pytest`).
-  - Any config/env changes (for example `IFLOW_API_KEY`, Langfuse keys).
-  - Sample output paths if behavior affects `paper/` or `blog/` artifacts.
+## Planning Rules
+- For non-trivial changes, update `current-task.md` and `.harness/session-state.json` with goal, scope, plan, risks, and next steps.
+- Keep plans small enough to verify in one session.
+- Record durable design choices in `docs/decisions.md`.
 
-## Security & Configuration Tips
-- Store secrets in environment variables or `.env`; never commit credentials.
-- Treat `config.json` as non-secret defaults only; keep API keys out of tracked files.
+## Verification Policy
+- Follow `docs/verification.md` for command selection.
+- Normal Python changes should run `uv run python -m pytest -q` unless the change is documentation-only.
+- For harness-only changes, run `bash scripts/harness_check.sh` when a POSIX shell is available. If unavailable, run an equivalent file-presence check and record the limitation.
+- Failed or skipped verification must be recorded in `.harness/session-log.md` and, when useful, `docs/error-journal.md`.
 
-## Digest Notes
-- AI key source priority:
-  - CLI arg: `--iflow-key`
-  - env: `IFLOW_API_KEY` (loaded via `.env` when available)
-- Known runtime issue:
-  - If RSS fetch logs show proxy errors to `127.0.0.1:7890`, unset proxy env vars or start local proxy.
-- Digest module includes response-shape fallbacks for OpenAI-compatible providers to avoid crashes on partial/variant `choices` payloads.
+## Safety Policy
+- Use `scripts/safe_bash_guard.sh` as the boundary reference for dangerous shell patterns.
+- Do not run destructive git, filesystem, database, migration, or force-push commands without explicit user instruction.
+- Treat `config.json` as non-secret defaults only.
+
+## Handoff Policy
+Before ending a substantive session, update:
+- `current-task.md`
+- `.harness/session-state.json`
+- `.harness/session-log.md`
+- `docs/decisions.md` or `docs/error-journal.md` when a durable decision or failure was learned
+
+The handoff must include completed work, changed files, verification results, open risks, and the recommended resume point.
+
+## Recommended Skills
+- `/start`: restore context and produce a Session Briefing.
+- `/plan`: turn a request into a tracked plan.
+- `/review`: inspect current diff for blockers and risks.
+- `/commit`: perform pre-commit review and verification; do not commit unless the user asks.
+- `/handoff`: seal session state for the next agent.
+
+## Output Style
+Be concise, concrete, and evidence-oriented. Lead with findings or outcomes, include commands that were run, and point to changed files when useful.
