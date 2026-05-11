@@ -95,3 +95,8 @@ DEFAULT_RSS_FEEDS: list[tuple[str, str]] = [
     ("computer.rip", "https://computer.rip/rss.xml"),
     ("tedunangst.com", "https://www.tedunangst.com/flak/rss"),
 ]
+
+DEFAULT_BLOG_SOURCES: list[tuple[str, str, str]] = [
+    ("OpenAI Developers Blog", "https://developers.openai.com/blog/", "openai_blog"),
+    ("Claude Blog", "https://claude.com/blog", "claude_blog"),
+]

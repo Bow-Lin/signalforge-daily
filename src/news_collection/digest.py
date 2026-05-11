@@ -16,7 +16,9 @@ import xml.etree.ElementTree as ET
 import requests
 from bs4 import BeautifulSoup
 
-from .digest_feeds import DEFAULT_RSS_FEEDS
+from .blog_tracker.sources.claude_blog import ClaudeBlogClient
+from .blog_tracker.sources.openai_blog import OpenAIDevBlogClient
+from .digest_feeds import DEFAULT_BLOG_SOURCES, DEFAULT_RSS_FEEDS
 
 
 logger = logging.getLogger(__name__)
@@ -42,6 +44,7 @@ T = TypeVar("T")
 class FeedSource:
     name: str
     xml_url: str
+    source_type: Literal["rss", "openai_blog", "claude_blog"] = "rss"
 
 
 @dataclass(frozen=True)
@@ -257,7 +260,12 @@ def _extract_response_text(response: object) -> str:
 
 
 def load_default_feed_sources() -> list[FeedSource]:
-    return [FeedSource(name=name, xml_url=xml_url) for name, xml_url in DEFAULT_RSS_FEEDS]
+    rss_sources = [FeedSource(name=name, xml_url=xml_url) for name, xml_url in DEFAULT_RSS_FEEDS]
+    blog_sources = [
+        FeedSource(name=name, xml_url=xml_url, source_type=source_type)
+        for name, xml_url, source_type in DEFAULT_BLOG_SOURCES
+    ]
+    return rss_sources + blog_sources
 
 
 def _local_name(tag: str) -> str:
@@ -393,7 +401,83 @@ def _dedupe_articles(items: Iterable[Article]) -> list[Article]:
     return sorted(dedup.values(), key=lambda it: it.pub_date, reverse=True)
 
 
-def _fetch_feed(source: FeedSource, timeout_s: int) -> list[Article]:
+def _build_blog_client(source: FeedSource, timeout_s: int):
+    if source.source_type == "openai_blog":
+        return OpenAIDevBlogClient(base_url=source.xml_url, timeout_s=timeout_s)
+    if source.source_type == "claude_blog":
+        return ClaudeBlogClient(base_url=source.xml_url, timeout_s=timeout_s)
+    raise ValueError(f"unsupported blog source type: {source.source_type}")
+
+
+def _extract_blog_description(html_text: str) -> str:
+    soup = BeautifulSoup(html_text, "html.parser")
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+
+    selectors = [
+        "article",
+        "main",
+        "[role='main']",
+    ]
+    container = None
+    for selector in selectors:
+        container = soup.select_one(selector)
+        if container is not None:
+            break
+    if container is None:
+        container = soup.body or soup
+
+    parts: list[str] = []
+    for node in container.find_all(["p", "li"]):
+        text = _clean_text(node.get_text(" ", strip=True))
+        if text:
+            parts.append(text)
+        if len(" ".join(parts)) >= 1200:
+            break
+
+    if not parts:
+        fallback_text = _clean_text(container.get_text(" ", strip=True))
+        return fallback_text[:1200]
+    return " ".join(parts)[:1200]
+
+
+def _fetch_blog_source(
+    source: FeedSource,
+    timeout_s: int,
+    *,
+    since: datetime | None,
+) -> list[Article]:
+    client = _build_blog_client(source, timeout_s)
+    effective_since = since or (datetime.now(timezone.utc) - timedelta(days=180))
+    posts = client.list_posts(effective_since)
+
+    articles: list[Article] = []
+    for post in posts:
+        description = post.title
+        try:
+            html_text = client.fetch_html(post.url)
+        except Exception as exc:
+            logger.warning("[digest] failed to fetch blog post body %s: %s", post.url, exc)
+        else:
+            description = _extract_blog_description(html_text) or post.title
+
+        articles.append(
+            Article(
+                title=post.title,
+                link=post.url,
+                pub_date=post.published_at,
+                description=description,
+                source_name=source.name,
+                source_url=source.xml_url,
+            )
+        )
+    return _dedupe_articles(articles)
+
+
+def _fetch_feed(source: FeedSource, timeout_s: int, *, since: datetime | None = None) -> list[Article]:
+    if source.source_type != "rss":
+        return _fetch_blog_source(source, timeout_s, since=since)
+
     headers = {
         "User-Agent": "news-collection-digest/1.0 (+https://example.com)",
         "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
@@ -408,6 +492,7 @@ def fetch_all_feeds(
     *,
     timeout_s: int = 15,
     concurrency: int = 10,
+    since: datetime | None = None,
 ) -> tuple[list[Article], FetchStats]:
     all_articles: list[Article] = []
     failures: dict[str, str] = {}
@@ -415,7 +500,9 @@ def fetch_all_feeds(
     processed = 0
 
     with ThreadPoolExecutor(max_workers=max(1, concurrency)) as executor:
-        futures = {executor.submit(_fetch_feed, feed, timeout_s): feed for feed in feeds}
+        futures = {
+            executor.submit(_fetch_feed, feed, timeout_s, since=since): feed for feed in feeds
+        }
         total = len(futures)
         for future in as_completed(futures):
             feed = futures[future]
@@ -920,18 +1007,19 @@ def run_digest(
         raise ValueError("top_n must be > 0")
 
     sources = feeds or load_default_feed_sources()
-    logger.info("[digest] Step 1/5: Fetching %s RSS feeds...", len(sources))
+    logger.info("[digest] Step 1/5: Fetching %s digest sources...", len(sources))
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
     all_articles, fetch_stats = fetch_all_feeds(
         sources,
         timeout_s=feed_timeout_s,
         concurrency=feed_concurrency,
+        since=cutoff,
     )
 
     if not all_articles:
         raise RuntimeError("No articles fetched from any feed")
 
     logger.info("[digest] Step 2/5: Filtering by time range (%s hours)...", hours)
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
     recent_articles = [it for it in all_articles if it.pub_date.astimezone(timezone.utc) > cutoff]
 
     if not recent_articles:

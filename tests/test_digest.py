@@ -4,13 +4,17 @@ from datetime import datetime, timezone
 
 from news_collection.digest import (
     DigestStats,
+    FeedSource,
     ScoreBreakdown,
     ScoredArticle,
     _extract_response_text,
+    fetch_all_feeds,
     generate_digest_report,
+    load_default_feed_sources,
     parse_feed_items,
     parse_json_response,
 )
+from news_collection.blog_tracker.sources.base import ListedPost
 
 
 def test_parse_json_response_with_code_fence() -> None:
@@ -109,3 +113,52 @@ def test_extract_response_text_from_model_dump() -> None:
             }
 
     assert _extract_response_text(_Resp()) == "hello"
+
+
+def test_load_default_feed_sources_includes_official_ai_dev_blogs() -> None:
+    sources = {source.name: source for source in load_default_feed_sources()}
+
+    assert sources["OpenAI Developers Blog"].source_type == "openai_blog"
+    assert sources["Claude Blog"].source_type == "claude_blog"
+
+
+def test_fetch_all_feeds_supports_openai_blog_sources(monkeypatch) -> None:
+    now = datetime(2026, 3, 20, 8, 0, 0, tzinfo=timezone.utc)
+
+    class _FakeOpenAIClient:
+        def __init__(self, base_url: str, timeout_s: int = 30) -> None:
+            self.base_url = base_url
+            self.timeout_s = timeout_s
+
+        def list_posts(self, since: datetime) -> list[ListedPost]:
+            assert since <= now
+            return [
+                ListedPost(
+                    url="https://developers.openai.com/blog/test-post",
+                    title="Test Post",
+                    published_at=now,
+                )
+            ]
+
+        def fetch_html(self, url: str) -> str:
+            assert url == "https://developers.openai.com/blog/test-post"
+            return "<html><body><article><p>OpenAI blog body.</p></article></body></html>"
+
+    monkeypatch.setattr("news_collection.digest.OpenAIDevBlogClient", _FakeOpenAIClient)
+
+    articles, stats = fetch_all_feeds(
+        [
+            FeedSource(
+                name="OpenAI Developers Blog",
+                xml_url="https://developers.openai.com/blog/",
+                source_type="openai_blog",
+            )
+        ],
+        timeout_s=5,
+        concurrency=1,
+    )
+
+    assert stats.success_feeds == 1
+    assert len(articles) == 1
+    assert articles[0].title == "Test Post"
+    assert articles[0].description == "OpenAI blog body."
