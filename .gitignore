@@ -11,3 +11,9 @@ blog/
 .codex/
 output/
 skills/ai-daily-digest/
+app/node_modules/
+app/dist/
+app/src-tauri/target/
+app/src-tauri/sidecar/digest-sidecar/target/
+app/src-tauri/binaries/*.exe
+app/src-tauri/gen/

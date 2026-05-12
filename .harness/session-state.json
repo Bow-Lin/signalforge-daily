@@ -1,62 +1,98 @@
 {
-  "task_id": "harness-initialization-2026-05-11",
+  "task_id": "desktop-app-v0.1-2026-05-11",
   "status": "completed",
   "current_phase": "handoff_ready",
-  "last_updated": "2026-05-11T16:05:29+08:00",
+  "last_updated": "2026-05-12T00:00:00+08:00",
   "active_plan": [
-    "Inspect repository structure, tooling, tests, and git status.",
-    "Create Standard Harness protocol, state, docs, skills, and scripts.",
-    "Run available verification and record results.",
-    "Review changed files and prepare handoff."
+    "Replace the Electron shell with Tauri v2 while preserving the React renderer.",
+    "Move local config, run history, report scanning, file actions, and digest runner commands into Rust.",
+    "Configure a Python sidecar path for packaged builds and keep a uv-based sidecar launcher for v0.1.",
+    "Run available verification and record skipped checks or limitations."
   ],
   "next_3_steps": [
-    "Review the harness diff and commit it if approved.",
-    "Run bash harness checks later in Git Bash, WSL, Linux, or CI.",
-    "Start the next task with /start and /plan."
+    "Run cd app && npm run app:dev with a real API key and generate one digest.",
+    "Run cd app && npm run app:dev with a real API key and confirm Test connection returns Connection test passed.",
+    "Add a packaging step that freezes the Python backend into a true standalone sidecar executable."
   ],
   "changed_files": [
     ".gitignore",
-    "AGENTS.md",
+    "README.md",
     "current-task.md",
     "docs/architecture.md",
-    "docs/verification.md",
-    "docs/coding-guidelines.md",
     "docs/decisions.md",
-    "docs/error-journal.md",
+    "docs/verification.md",
     ".harness/session-state.json",
     ".harness/session-log.md",
-    ".harness/progress-map.md",
-    ".harness/command-history.md",
-    "skills/start/SKILL.md",
-    "skills/plan/SKILL.md",
-    "skills/review/SKILL.md",
-    "skills/commit/SKILL.md",
-    "skills/handoff/SKILL.md",
-    "scripts/harness_check.sh",
-    "scripts/safe_bash_guard.sh"
+    "app/index.html",
+    "app/package-lock.json",
+    "app/package.json",
+    "app/tsconfig.json",
+    "app/vite.config.ts",
+    "app/src/main.tsx",
+    "app/src/styles.css",
+    "app/src/app/App.tsx",
+    "app/src/app/routes.ts",
+    "app/src/components/AppShell.tsx",
+    "app/src/components/ErrorRecoveryCard.tsx",
+    "app/src/components/LatestDigestCard.tsx",
+    "app/src/components/MarkdownPreview.tsx",
+    "app/src/components/RunStatusCard.tsx",
+    "app/src/components/SettingsForm.tsx",
+    "app/src/components/TopPicksList.tsx",
+    "app/src/pages/ReportsPage.tsx",
+    "app/src/pages/SettingsPage.tsx",
+    "app/src/pages/SetupPage.tsx",
+    "app/src/pages/TodayPage.tsx",
+    "app/src/services/bridge.ts",
+    "app/src/services/format.ts",
+    "app/src/types/bridge.ts",
+    "app/src/types/config.ts",
+    "app/src/types/report.ts",
+    "app/src/types/run.ts",
+    "app/src-tauri/Cargo.lock",
+    "app/src-tauri/Cargo.toml",
+    "app/src-tauri/build.rs",
+    "app/src-tauri/tauri.conf.json",
+    "app/src-tauri/binaries/README.md",
+    "app/src-tauri/icons/icon.ico",
+    "app/src-tauri/sidecar/build-digest-sidecar.ps1",
+    "app/src-tauri/sidecar/digest-sidecar/Cargo.lock",
+    "app/src-tauri/sidecar/digest-sidecar/Cargo.toml",
+    "app/src-tauri/sidecar/digest-sidecar/src/main.rs",
+    "app/src-tauri/src/lib.rs",
+    "app/src-tauri/src/main.rs"
   ],
   "validation": {
     "last_commands": [
+      "cd app && npm install",
+      "cd app && npm run build",
+      "cd app && npm run sidecar:build",
+      "cd app/src-tauri && cargo check from Visual Studio Developer Command Prompt",
       "uv run python -m pytest -q",
-      "uv run python -m json.tool .harness/session-state.json",
-      "PowerShell equivalent of scripts/harness_check.sh required file checks"
+      "uv run python -m news_collection.digest_cli --help"
     ],
-    "last_result": "passed with bash execution skipped because bash/sh are unavailable in this Windows session",
+    "last_result": "passed; real digest generation skipped because no API key was provided; Test connection now performs a live provider ping when used in the app",
     "known_failures": [
-      "Current Windows session does not provide bash or sh."
+      "Real digest generation requires API credentials and network access.",
+      "npm warns about unknown electron-mirror env config, but install/build succeeded."
     ]
   },
   "cognitive_state": {
     "failure_count": 0,
-    "current_mode": "harness_initialization",
+    "current_mode": "desktop_app_implementation",
     "tried_approaches": [
-      "Repository reconnaissance",
-      "Standard Harness selection"
+      "Harness context restoration",
+      "Digest CLI contract review",
+      "Electron app scaffold",
+      "Tauri migration",
+      "Rust and Visual Studio C++ Build Tools installation",
+      "Sidecar launcher implementation",
+      "Frontend, Rust, sidecar, and Python verification"
     ],
     "blocked_on": null
   },
   "handoff": {
-    "last_summary": "Standard Harness initialization completed. Pytest, JSON validation, and PowerShell equivalent harness file check passed. POSIX shell script execution remains to be verified in a shell-capable environment.",
-    "resume_from": "Review and commit harness files, then use /start for the next session."
+    "last_summary": "Implemented requested Tauri + React + Rust shell + digest sidecar architecture and changed Settings Test connection to perform a live OpenAI-compatible ping. Renderer build, cargo check, and pytest passed.",
+    "resume_from": "Run the app with npm run app:dev, configure a real API key, confirm Test connection passes, then perform the first live digest generation smoke test."
   }
 }

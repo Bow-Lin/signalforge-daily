@@ -14,6 +14,10 @@
 - `src/news_collection/digest_cli.py`: AI daily digest CLI.
 - `src/news_collection/digest.py`: RSS/blog fetch, scoring, summarization, and Markdown report rendering.
 - `src/news_collection/digest_feeds.py`: default digest source list.
+- `app/`: Tauri + React + TypeScript v0.1 desktop wrapper for configuring and running the daily digest locally.
+- `app/src-tauri/`: Rust shell, Tauri commands, local persistence, report scanning, digest runner, and sidecar configuration.
+- `app/src-tauri/sidecar/digest-sidecar/`: launcher sidecar that delegates to the Python digest CLI during v0.1 development.
+- `app/src/`: React renderer pages for Today, Reports, Settings, and Setup.
 - `scripts/graph_viz.py`: graph visualization utility.
 
 ## Data and Generated Outputs
@@ -22,6 +26,7 @@ Generated outputs are local project artifacts and should not be treated as sourc
 - `blog/`: blog sync outputs and source tracking.
 - `output/`: digest Markdown reports.
 - `logs/`: local runtime logs.
+- selected desktop app workspaces: `app-config.json`, `runs/`, `reports/`, and `logs/` under the user-selected folder.
 
 ## External Services
 - iFlow/OpenAI-compatible AI API via `IFLOW_API_KEY` or CLI argument.

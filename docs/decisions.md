@@ -14,6 +14,18 @@
 - Decision: Ignore only `skills/ai-daily-digest/` rather than the full `skills/` directory, so project harness skills can be tracked.
 - Consequences: Harness skills under `skills/start`, `skills/plan`, `skills/review`, `skills/commit`, and `skills/handoff` remain eligible for version control.
 
+### 2026-05-11 - Use Electron for v0.1 Desktop Wrapper
+- Status: Superseded
+- Context: The first v0.1 app shell used Electron because Rust/Cargo were not installed in the current Windows environment.
+- Decision: Superseded by the Tauri decision below.
+- Consequences: The React renderer was retained, but Electron main/preload files were removed.
+
+### 2026-05-12 - Use Tauri for v0.1 Desktop Wrapper
+- Status: Accepted
+- Context: The desired architecture is Tauri App with React/Vue frontend, `src-tauri` Rust shell, and Python backend sidecar. Rust and Visual Studio C++ Build Tools were installed to make this locally verifiable.
+- Decision: Implement the v0.1 desktop wrapper with Tauri + React + TypeScript under `app/`, Rust commands under `app/src-tauri/`, and a `digest-sidecar` launcher that delegates to the existing Python digest CLI.
+- Consequences: The app follows the target desktop architecture and can be checked with Cargo. A later packaging step can replace the launcher sidecar with a frozen Python executable.
+
 ## Template
 
 ### YYYY-MM-DD - Title

@@ -1,64 +1,55 @@
 # Current Task
 
 ## Goal
-Initialize a Standard Project Harness for this Python `news_collection` repository so future Codex or Claude Code sessions can restore context, follow project rules, verify work, record failures, and hand off cleanly.
+Build a v0.1 local-first desktop app wrapper for the existing AI daily digest workflow: configure workspace/API key, generate today's digest, preview the report, and manage digest history.
 
 ## Current Status
-Completed. Standard Harness files have been created for protocol, state, verification, skills, and safety boundaries. No business logic files were modified for this task.
+Completed. The desktop app now follows the requested architecture: Tauri app, React/TypeScript frontend, `src-tauri` Rust shell, and a digest sidecar launcher that delegates to the existing Python backend CLI.
 
-## Scope
-- Create harness documentation under `docs/`.
-- Create structured state under `.harness/`.
-- Create project skills under `skills/start`, `skills/plan`, `skills/review`, `skills/commit`, and `skills/handoff`.
-- Create boundary scripts under `scripts/`.
-- Update `AGENTS.md` as the harness protocol entry point.
-- Adjust `.gitignore` so the external `skills/ai-daily-digest/` checkout stays ignored while project harness skills can be tracked.
+## Scope Completed
+- Inspected the existing `news_collection.digest_cli` entrypoint and confirmed the runner contract:
+  - `--hours`
+  - `--top-n`
+  - `--lang`
+  - `--output`
+  - `--iflow-key`
+  - `--iflow-base-url`
+  - `--iflow-model`
+  - `--feed-concurrency`
+  - `--ai-retries`
+  - `--max-ai-articles`
+- Added an `app/` Tauri + React + TypeScript desktop app subproject.
+- Added `app/src-tauri/` Rust commands for local config, run history, report scanning, file actions, and digest generation.
+- Added a Windows `digest-sidecar` launcher and build script under `app/src-tauri/sidecar/`.
+- Configured Tauri `bundle.externalBin` for the sidecar path.
+- Implemented Today, Reports, Settings, and first-run Setup pages.
+- Implemented Markdown preview, report scanning, copy/open/reveal actions, and delete-from-list behavior for run records.
+- Implemented error classification and recovery suggestions for missing API key, proxy errors, no articles, feed failures, model failures, write failures, and unknown failures.
+- Implemented live `Test connection` behavior for OpenAI-compatible providers through a lightweight chat completions ping.
+- Installed Rust and Visual Studio C++ Build Tools locally so the Tauri shell can be checked.
+- Updated README, architecture docs, verification docs, decisions, and harness state.
 
-## Relevant Files
-- `AGENTS.md`
-- `current-task.md`
-- `docs/architecture.md`
-- `docs/verification.md`
-- `docs/coding-guidelines.md`
-- `docs/decisions.md`
-- `docs/error-journal.md`
-- `.harness/session-state.json`
-- `.harness/session-log.md`
-- `.harness/progress-map.md`
-- `.harness/command-history.md`
-- `skills/*/SKILL.md`
-- `scripts/harness_check.sh`
-- `scripts/safe_bash_guard.sh`
-
-## Plan
-1. Inspect repository structure, tooling, tests, and git status.
-2. Create the Standard Harness file set.
-3. Write concise project-specific protocol, verification, state, and skill instructions.
-4. Add boundary scripts for harness checks and dangerous command detection.
-5. Run harness self-check or record why it cannot run.
-6. Update state and session log with the initialization result.
+## Out of Scope
+- Paper collection UI, blog tracker UI, source management, scheduling, system tray, cloud sync, accounts, tags, full-text search, or core digest algorithm rewrites.
+- Freezing the full Python backend into a standalone PyInstaller/Nuitka executable. v0.1 uses a sidecar launcher that calls the existing Python CLI through `uv`.
 
 ## Validation Commands
-- `uv run python -m pytest -q`
-- `bash scripts/harness_check.sh` when a POSIX shell is available
-- Equivalent PowerShell file-presence check when `bash`/`sh` are unavailable
+- `cd app && npm install`: passed.
+- `cd app && npm run build`: passed.
+- `cd app && npm run sidecar:build`: passed.
+- `cd app/src-tauri && cargo check` from a Visual Studio Developer Command Prompt: passed.
+- `uv run python -m pytest -q`: passed, 8 tests.
+- `uv run python -m news_collection.digest_cli --help`: passed.
 
-## Acceptance Criteria
-- New sessions can recover the active task from `current-task.md` and `.harness/session-state.json`.
-- `AGENTS.md` points agents to the harness protocol and required reading order.
-- `docs/verification.md` documents validation for code, docs, harness changes, and skipped checks.
-- `/start`, `/plan`, `/review`, `/commit`, and `/handoff` skills exist with usable operating steps.
-- `scripts/harness_check.sh` and `scripts/safe_bash_guard.sh` exist.
-- Harness initialization does not modify `src/` business logic.
-
-## Risks
-- Current Windows environment has no `bash` or `sh`, so shell script execution may need to be verified later on a POSIX-capable environment.
-- The repository already contains an ignored external skill checkout at `skills/ai-daily-digest/`; it must not be included accidentally.
+## Known Limitations
+- A real end-to-end digest generation was not run because no API key was provided in this session.
+- The v0.1 sidecar is a launcher around `uv run python -m news_collection.digest_cli`; later packaging can replace it with a frozen Python executable.
+- `npm` prints a warning about unknown `electron-mirror` config in the current environment; it did not block install or build.
 
 ## Next 3 Steps
-1. Review the harness diff and commit it if the file set looks good.
-2. In a POSIX-capable environment, run `bash scripts/harness_check.sh` and optionally `bash -n scripts/safe_bash_guard.sh`.
-3. For the next engineering task, begin with `/start`, then use `/plan` before changing business code.
+1. Run `cd app && npm run app:dev`, choose a workspace, configure a real API key, and generate one digest.
+2. Add a live provider ping behind `Test connection` if the provider endpoint supports a cheap health check.
+3. Add a packaging step that freezes the Python backend into a true standalone sidecar executable.
 
 ## Last Updated
-2026-05-11T16:05:29+08:00
+2026-05-12T00:00:00+08:00

@@ -64,6 +64,56 @@ export LANGFUSE_HOST=https://cloud.langfuse.com
 
 ## Usage
 
+## Desktop App v0.1
+
+The local-first desktop app lives under `app/`. It uses Tauri + React + TypeScript with a Rust shell and a digest sidecar launcher. The sidecar wraps the existing Python digest CLI instead of replacing it.
+
+Install and run:
+
+```bash
+cd app
+npm install
+npm run app:dev
+```
+
+Build the renderer only:
+
+```bash
+cd app
+npm run build
+```
+
+Build the sidecar launcher only:
+
+```bash
+cd app
+npm run sidecar:build
+```
+
+Build the Tauri app:
+
+```bash
+cd app
+npm run tauri:build
+```
+
+In the app, choose a workspace folder, enter the iFlow/OpenAI-compatible API key, pick language/time range defaults, then click `Generate Today's Digest` on the Today page. App data is stored in the selected workspace:
+
+```text
+app-config.json
+runs/
+logs/
+reports/
+```
+
+The v0.1 sidecar launcher calls:
+
+```bash
+uv run python -m news_collection.digest_cli
+```
+
+Reports are written to the configured `reports/` folder and can be previewed from the Reports page.
+
 Run a paper collection:
 
 ```bash

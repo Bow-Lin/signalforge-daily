@@ -1,0 +1,30 @@
+{
+  "name": "news-collection-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local-first desktop app for AI daily digest generation.",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "sidecar:build": "powershell -ExecutionPolicy Bypass -File ./src-tauri/sidecar/build-digest-sidecar.ps1",
+    "app:dev": "powershell -ExecutionPolicy Bypass -File ./scripts/run-tauri.ps1 -Mode dev",
+    "tauri:build": "powershell -ExecutionPolicy Bypass -File ./scripts/run-tauri.ps1 -Mode build",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.9.0",
+    "@vitejs/plugin-react": "^5.1.1",
+    "marked": "^17.0.1",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "vite": "^7.2.7"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.9.5",
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^5.9.3"
+  }
+}
