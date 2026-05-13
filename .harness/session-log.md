@@ -73,3 +73,94 @@
   - `cd app && npm run build`: passed.
   - `uv run python -m pytest -q`: passed, 8 tests.
   - `cd app/src-tauri && cargo check` from Visual Studio Developer Command Prompt: passed.
+
+## 2026-05-12 - SignalForge Daily Full Rename
+- Goal: Rename the product and Python package namespace to SignalForge Daily / `signalforge_daily`.
+- Implementation:
+  - Renamed `src/news_collection/` to `src/signalforge_daily/`.
+  - Updated Python distribution name to `signalforge-daily`.
+  - Updated tests, scripts, README, architecture docs, verification docs, Tauri runner, sidecar launcher, npm metadata, Rust crate metadata, and Tauri app metadata.
+  - Updated Tauri identifier to `local.signalforge.daily`.
+  - Updated app config directory to `signalforge-daily`.
+  - Preserved compatibility fallbacks for old sidecar/repo-root environment variable names.
+  - Regenerated npm, uv, and Cargo lock files.
+- Verification:
+  - `cd app && npm install`: passed.
+  - `cd app && npm run build`: passed.
+  - `cd app && npm run sidecar:build`: passed.
+  - `cd app/src-tauri && cargo check` from Visual Studio Developer Command Prompt: passed.
+  - `PYTHONPATH=src .venv/Scripts/python.exe -m pytest -q`: passed, 8 tests.
+  - `PYTHONPATH=src .venv/Scripts/python.exe -m signalforge_daily.digest_cli --help`: passed.
+  - `app/src-tauri/binaries/digest-sidecar-x86_64-pc-windows-msvc.exe --help`: passed.
+- Notes:
+  - `uv run python -m pytest -q` could not complete because uv tried to rebuild the renamed editable project and failed to fetch `setuptools>=68.0` from PyPI due TLS handshake EOF.
+  - Physical folder `D:\work\news_collection` was intentionally not renamed.
+
+## 2026-05-13 - Partial RSS Failure Warnings
+- Goal: Avoid showing a failed digest when only some RSS feeds fail but enough feeds succeed to generate a report.
+- Implementation:
+  - Updated `signalforge_daily.digest_cli` to print structured per-feed failure lines after successful runs.
+  - Added `warnings.feedFailures` to App run records.
+  - Updated the Tauri runner to parse feed failure lines from successful CLI output and persist them as warnings while keeping run status as `success`.
+  - Added a Today page warning card that says the digest was generated from successful sources and lists failed feeds.
+- Verification:
+  - `cd app && npm run build`: passed.
+  - `cd app && npm run sidecar:build`: passed.
+  - `cd app/src-tauri && cargo check` from Visual Studio Developer Command Prompt: passed.
+  - `PYTHONPATH=src .venv/Scripts/python.exe -m pytest -q`: passed, 8 tests.
+  - `PYTHONPATH=src .venv/Scripts/python.exe -m signalforge_daily.digest_cli --help`: passed.
+
+## 2026-05-13 - Today Options and Windows Output Fix
+- Goal: Put frequently changed digest defaults on Today and fix a report-backed run that still displayed as failed.
+- Root cause:
+  - The affected run wrote `C:\Users\86521\Documents\reports\digest-20260513-002231.md` successfully.
+  - Python then raised `UnicodeEncodeError` while printing emoji status text to a GBK Windows subprocess stream.
+  - The Tauri runner classified the non-zero process exit as `feed_fetch_failed` because raw logs also contained partial feed failures.
+- Implementation:
+  - Added Today-page controls for language and time range, saved immediately through `save_config`.
+  - Changed digest CLI status output to ASCII-safe text.
+  - Set `PYTHONIOENCODING=utf-8` and `PYTHONUTF8=1` for Tauri-launched Python commands.
+  - Added migration for existing failed run records when a Markdown report exists and the failure is only partial-feed or post-report output related.
+  - Parsed feed warning lines from existing logs and displayed them in the Today warning card.
+- Verification:
+  - `cd app && npm run build`: passed.
+  - `PYTHONPATH=src .venv/Scripts/python.exe -m signalforge_daily.digest_cli --help`: passed.
+  - `cd app && npm run sidecar:build`: passed.
+  - `app/src-tauri/binaries/digest-sidecar-x86_64-pc-windows-msvc.exe --help`: passed.
+  - `PYTHONPATH=src .venv/Scripts/python.exe -m pytest -q`: passed, 8 tests.
+  - `cd app/src-tauri && cargo check` from Visual Studio Developer Command Prompt: passed.
+- Notes:
+  - Existing run `C:\Users\86521\Documents\runs\run-20260513-002231.json` now has `status: success`, top picks, source stats, and `warnings.feedFailures`.
+
+## 2026-05-13 - Today Reading Page Redesign
+- Goal: Upgrade Today from a run-result panel into a Chinese-first daily digest reading surface.
+- Context restored:
+  - Previous SignalForge rename, Today quick controls, and partial RSS warning changes were already present in the dirty worktree.
+  - Relevant frontend files are under `app/src/pages/TodayPage.tsx`, `app/src/components/`, and `app/src/styles.css`.
+- Implementation:
+  - Added `TodayOverviewCard` for status, generation time, scanned sources, selected article count, and Top Picks count.
+  - Reordered Today so overview and card-based Top Picks appear before settings and technical run details.
+  - Added reader actions for reading the full report, opening originals, copying selected picks, and a non-persistent favorite placeholder.
+  - Moved duration, current step, raw fetched count, report path, failed feeds, and logs into a collapsed `运行详情` panel.
+  - Localized Today-visible labels, navigation labels, loading text, source-warning copy, and error recovery actions to Chinese.
+  - Replaced user-facing unavailable values with `未记录`.
+- Verification:
+  - `cd app && npm run build`: passed.
+  - `uv run python -m json.tool .harness/session-state.json`: passed.
+  - Browser/IAB visual smoke check was skipped because no callable Browser/IAB tool was exposed in this session, and a plain Vite browser page lacks the Tauri `invoke` runtime required by the app.
+- Notes:
+  - Favorites and Sources are disabled navigation placeholders only; no persistence or new routes were added.
+  - Recommendation reasons and tags fall back gracefully when old report data lacks structured fields.
+
+## 2026-05-13 - Commit Main Review
+- Goal: Review, verify, commit, and push the accumulated SignalForge Daily rename, RSS warning handling, and Today reading-page redesign to `master`.
+- Review:
+  - Inspected `git status --short`, diff summary, source/app diffs, untracked files, old package references, and secret-like strings.
+  - No P1/P2 blockers found in the intended project files.
+  - Left `.claude/settings.local.json` untracked because it is a local tool-permissions file outside the project change scope.
+- Verification:
+  - `cd app && npm run build`: passed.
+  - `cd app && npm run sidecar:build`: passed.
+  - `cd app/src-tauri && cargo check`: passed.
+  - `uv run python -m pytest -q`: passed, 8 tests.
+  - `uv run python -m signalforge_daily.digest_cli --help`: passed.

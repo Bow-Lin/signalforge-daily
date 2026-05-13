@@ -905,7 +905,7 @@ def run_collection(
         return GraphResult(stored_papers=0)
     graph = build_graph().compile()
     trace_id = start_trace(
-        name="news_collection_run",
+        name="signalforge_daily_run",
         input={"topic": topic, "requirements": requirements, "content_type": content_type},
         session_id=session_id,
     )
@@ -941,7 +941,7 @@ def run_collection(
     result = graph.invoke(init_state)
     update_trace_name(
         trace_id,
-        name="news_collection_run",
+        name="signalforge_daily_run",
         session_id=session_id,
         input={"topic": topic, "requirements": requirements, "content_type": content_type},
     )

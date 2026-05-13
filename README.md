@@ -1,11 +1,11 @@
-# News Collection (LangGraph)
+# SignalForge Daily (LangGraph)
 
 Collect topic-related content with LangGraph. Currently implements paper collection via arXiv.
 Uses a two-step LLM plan-and-select flow with sequential tool execution and PDF evidence.
 
 ## Latest Updates (2026-02-25)
 
-- Added Python AI daily digest pipeline (`news_collection.digest_cli`) aligned with the `ai-daily-digest` skill.
+- Added Python AI daily digest pipeline (`signalforge_daily.digest_cli`) aligned with the `ai-daily-digest` skill.
 - Added built-in RSS source list (`92` feeds) and report generation with:
   - Top 3 picks
   - Category grouping
@@ -36,7 +36,7 @@ export IFLOW_API_KEY=your_key
 3) Run commands with `uv run`:
 
 ```bash
-uv run python -m news_collection.digest_cli --hours 24 --top-n 15 --lang zh
+uv run python -m signalforge_daily.digest_cli --hours 24 --top-n 15 --lang zh
 ```
 
 ### Option B: pip
@@ -109,7 +109,7 @@ reports/
 The v0.1 sidecar launcher calls:
 
 ```bash
-uv run python -m news_collection.digest_cli
+uv run python -m signalforge_daily.digest_cli
 ```
 
 Reports are written to the configured `reports/` folder and can be previewed from the Reports page.
@@ -117,7 +117,7 @@ Reports are written to the configured `reports/` folder and can be previewed fro
 Run a paper collection:
 
 ```bash
-python -m news_collection.cli \
+python -m signalforge_daily.cli \
   --topic "RTL 代码生成 且使用cvdp数据集或RealBench数据集" \
   --requirements "使用cvdp数据集或RealBench数据集" \
   --content-type paper \
@@ -132,7 +132,7 @@ python -m news_collection.cli \
 You can also run via a config file:
 
 ```bash
-python -m news_collection.cli --config /home/deming/work/news_collection/config.json
+python -m signalforge_daily.cli --config /home/deming/work/signalforge_daily/config.json
 ```
 
 Collected items are saved under `paper/papers_latest.jsonl`.
@@ -142,7 +142,7 @@ Selected PDFs are copied to `paper/pdfs/`.
 Run blog tracker:
 
 ```
-python -m news_collection.blog_cli --source all
+python -m signalforge_daily.blog_cli --source all
 ```
 
 Blog outputs are saved under `blog/`, and sources are tracked in `blog/sources.txt` (first line is `last_run_at\t<iso>`).
@@ -150,7 +150,7 @@ Blog outputs are saved under `blog/`, and sources are tracked in `blog/sources.t
 Run AI daily digest (Python):
 
 ```bash
-uv run python -m news_collection.digest_cli --hours 24 --top-n 15 --lang zh
+uv run python -m signalforge_daily.digest_cli --hours 24 --top-n 15 --lang zh
 ```
 
 Digest output is saved under `output/digest-YYYYMMDD.md` by default.
@@ -158,7 +158,7 @@ Digest output is saved under `output/digest-YYYYMMDD.md` by default.
 Advanced digest options:
 
 ```bash
-uv run python -m news_collection.digest_cli \
+uv run python -m signalforge_daily.digest_cli \
   --hours 24 \
   --top-n 15 \
   --lang zh \
@@ -172,7 +172,7 @@ uv run python -m news_collection.digest_cli \
 Optional custom feeds file:
 
 ```bash
-uv run python -m news_collection.digest_cli --feeds-file ./my_feeds.txt
+uv run python -m signalforge_daily.digest_cli --feeds-file ./my_feeds.txt
 ```
 
 `my_feeds.txt` format (`name<TAB>rss_url`, or only `rss_url` per line):
@@ -187,30 +187,30 @@ https://example.com/rss.xml
 Print Mermaid source:
 
 ```bash
-python /home/deming/work/news_collection/scripts/graph_viz.py --format mermaid
+python /home/deming/work/signalforge_daily/scripts/graph_viz.py --format mermaid
 ```
 
 Write Mermaid to file:
 
 ```bash
-python /home/deming/work/news_collection/scripts/graph_viz.py --format mermaid --out /tmp/graph.mmd
+python /home/deming/work/signalforge_daily/scripts/graph_viz.py --format mermaid --out /tmp/graph.mmd
 ```
 
 Write PNG (if mermaid rendering is available):
 
 ```bash
-python /home/deming/work/news_collection/scripts/graph_viz.py --format png --out /tmp/graph.png
+python /home/deming/work/signalforge_daily/scripts/graph_viz.py --format png --out /tmp/graph.png
 ```
 
 ## Troubleshooting
 
-### `ModuleNotFoundError: No module named 'news_collection'`
+### `ModuleNotFoundError: No module named 'signalforge_daily'`
 
 Run from repo root and use `uv run`:
 
 ```bash
-cd /home/deming/work/news_collection
-uv run python -m news_collection.digest_cli --help
+cd /home/deming/work/signalforge_daily
+uv run python -m signalforge_daily.digest_cli --help
 ```
 
 ### `No matching distribution found for langgraph>=0.2.31`

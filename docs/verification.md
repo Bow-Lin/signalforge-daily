@@ -22,7 +22,7 @@ pip install -e .
 | --- | --- |
 | Python business logic | `uv run python -m pytest -q` |
 | Digest parser/report behavior | `uv run python -m pytest -q tests/test_digest.py` plus full pytest when shared code changes |
-| CLI behavior | `uv run python -m pytest -q`; optionally run the relevant `uv run python -m news_collection.<cli> --help` |
+| CLI behavior | `uv run python -m pytest -q`; optionally run the relevant `uv run python -m signalforge_daily.<cli> --help` |
 | Desktop app renderer | `cd app && npm install` when dependencies are missing, then `npm run build` |
 | Tauri shell | `cd app && npm run sidecar:build`, then `cd app/src-tauri && cargo check` from a Visual Studio Developer Command Prompt on Windows |
 | Harness or docs only | `bash scripts/harness_check.sh` when available; otherwise equivalent file-presence check |
@@ -32,9 +32,9 @@ pip install -e .
 Use these when the task affects a specific CLI and required credentials/network are available:
 
 ```bash
-uv run python -m news_collection.cli --config config.json
-uv run python -m news_collection.blog_cli --source all
-uv run python -m news_collection.digest_cli --hours 24 --top-n 15 --lang zh
+uv run python -m signalforge_daily.cli --config config.json
+uv run python -m signalforge_daily.blog_cli --source all
+uv run python -m signalforge_daily.digest_cli --hours 24 --top-n 15 --lang zh
 cd app && npm run app:dev
 ```
 

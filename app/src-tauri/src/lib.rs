@@ -84,6 +84,7 @@ struct RunRecord {
     stats: Option<RunStats>,
     output: Option<RunOutput>,
     top_picks: Option<Vec<TopPick>>,
+    warnings: Option<RunWarnings>,
     error: Option<DigestError>,
 }
 
@@ -123,6 +124,19 @@ struct DigestError {
     message: String,
     raw: Option<String>,
     suggested_actions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RunWarnings {
+    feed_failures: Option<Vec<FeedFailure>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FeedFailure {
+    source: String,
+    reason: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -188,7 +202,7 @@ pub fn run() {
             delete_run
         ])
         .run(tauri::generate_context!())
-        .expect("error while running AI News Collection");
+        .expect("error while running SignalForge Daily");
 }
 
 #[tauri::command]
@@ -248,13 +262,12 @@ if choice_count < 1:
 print("ok")
 "#;
 
-    let mut command = Command::new("uv");
+    let root = repo_root()?;
+    let mut command = python_command(&root);
     command
-        .arg("run")
-        .arg("python")
         .arg("-c")
         .arg(script)
-        .current_dir(repo_root()?);
+        .current_dir(&root);
     apply_env(&mut command, &config);
 
     let output = command.output().map_err(|err| err.to_string())?;
@@ -325,6 +338,7 @@ fn generate_digest(app: AppHandle, state: State<AppState>) -> Result<RunRecord, 
             log_path: Some(log_path.to_string_lossy().to_string()),
         }),
         top_picks: None,
+        warnings: None,
         error: None,
     };
 
@@ -457,11 +471,17 @@ fn run_digest_process(
             .unwrap_or_default(),
     );
 
-    if status.success() && report_path.exists() {
+    if (status.success() || is_post_report_output_error(&raw)) && report_path.exists() {
         let markdown = fs::read_to_string(&report_path).unwrap_or_default();
         record.status = "success".to_string();
         record.top_picks = Some(parse_top_picks(&markdown));
         record.stats = parse_stats(&raw);
+        let feed_failures = parse_feed_failures(&raw);
+        if !feed_failures.is_empty() {
+            record.warnings = Some(RunWarnings {
+                feed_failures: Some(feed_failures),
+            });
+        }
         save_run(&config, &record)?;
         emit(
             &app,
@@ -562,17 +582,19 @@ fn digest_command(config: &AppConfig, report_path: &Path) -> Result<Command, Str
         args.push(base_url.clone());
     }
 
-    let sidecar = env::var("NEWS_COLLECTION_DIGEST_SIDECAR").ok().filter(|value| !value.trim().is_empty());
+    let sidecar = env::var("SIGNALFORGE_DAILY_DIGEST_SIDECAR")
+        .or_else(|_| env::var("NEWS_COLLECTION_DIGEST_SIDECAR"))
+        .ok()
+        .filter(|value| !value.trim().is_empty());
     let mut command = if let Some(path) = sidecar {
         let mut cmd = Command::new(path);
         cmd.args(args);
         cmd
     } else {
-        let mut cmd = Command::new("uv");
-        cmd.arg("run")
-            .arg("python")
-            .arg("-m")
-            .arg("news_collection.digest_cli")
+        let root = repo_root()?;
+        let mut cmd = python_command(&root);
+        cmd.arg("-m")
+            .arg("signalforge_daily.digest_cli")
             .args(args);
         cmd
     };
@@ -583,6 +605,8 @@ fn digest_command(config: &AppConfig, report_path: &Path) -> Result<Command, Str
 }
 
 fn apply_env(command: &mut Command, config: &AppConfig) {
+    command.env("PYTHONIOENCODING", "utf-8");
+    command.env("PYTHONUTF8", "1");
     command.env("IFLOW_API_KEY", &config.ai_provider.api_key);
     if let Some(base_url) = config.ai_provider.base_url.as_ref().filter(|value| !value.trim().is_empty()) {
         command.env("IFLOW_BASE_URL", base_url);
@@ -605,6 +629,29 @@ fn apply_env(command: &mut Command, config: &AppConfig) {
         }
         _ => {}
     }
+}
+
+fn python_command(repo_root: &Path) -> Command {
+    let windows_python = repo_root.join(".venv").join("Scripts").join("python.exe");
+    let unix_python = repo_root.join(".venv").join("bin").join("python");
+    let mut command = if windows_python.exists() {
+        Command::new(windows_python)
+    } else if unix_python.exists() {
+        Command::new(unix_python)
+    } else {
+        let mut fallback = Command::new("uv");
+        fallback.arg("run").arg("--no-project").arg("python");
+        fallback
+    };
+
+    let src_path = repo_root.join("src").to_string_lossy().to_string();
+    let separator = if cfg!(windows) { ";" } else { ":" };
+    let python_path = match env::var("PYTHONPATH") {
+        Ok(existing) if !existing.trim().is_empty() => format!("{src_path}{separator}{existing}"),
+        _ => src_path,
+    };
+    command.env("PYTHONPATH", python_path);
+    command
 }
 
 fn snapshot() -> Result<AppSnapshot, String> {
@@ -669,6 +716,9 @@ fn read_runs(config: &AppConfig) -> Result<Vec<RunRecord>, String> {
                         raw: None,
                         suggested_actions: vec!["Retry the digest generation".to_string()],
                     });
+                    let _ = write_json(&path, &run);
+                }
+                if normalize_finished_report_run(&mut run) {
                     let _ = write_json(&path, &run);
                 }
                 runs.push(run);
@@ -768,7 +818,7 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
 fn pointer_config_path() -> Result<PathBuf, String> {
     let dir = dirs::config_dir()
         .ok_or_else(|| "Unable to resolve local config directory".to_string())?
-        .join("ai-news-collection");
+        .join("signalforge-daily");
     Ok(dir.join("workspace-pointer.json"))
 }
 
@@ -811,13 +861,145 @@ fn progress_from_line(line: &str) -> Option<String> {
 }
 
 fn parse_stats(raw: &str) -> Option<RunStats> {
-    let regex = Regex::new(r"Stats:\s*(\d+)\s+sources\s+→\s+(\d+)\s+articles\s+→\s+(\d+)\s+recent\s+→\s+(\d+)\s+selected").ok()?;
-    let caps = regex.captures(raw)?;
+    if let Some(caps) = Regex::new(r"Stats:\s*(\d+)\s+sources\s+(?:→|->)\s+(\d+)\s+articles\s+(?:→|->)\s+(\d+)\s+recent\s+(?:→|->)\s+(\d+)\s+selected")
+        .ok()?
+        .captures(raw)
+    {
+        return Some(RunStats {
+            sources_scanned: caps.get(1).and_then(|value| value.as_str().parse().ok()),
+            articles_fetched: caps.get(2).and_then(|value| value.as_str().parse().ok()),
+            articles_selected: caps.get(4).and_then(|value| value.as_str().parse().ok()),
+        });
+    }
+
+    let progress_regex = Regex::new(r"Progress:\s*(\d+)/(\d+)\s+feeds processed\s+\((\d+)\s+ok,\s+(\d+)\s+failed\)").ok()?;
+    let last_progress = progress_regex.captures_iter(raw).last();
+    let Some(caps) = last_progress else {
+        return None;
+    };
+    let selected = Regex::new(r"Generating summaries:\s*(\d+)\s+articles")
+        .ok()
+        .and_then(|regex| regex.captures(raw))
+        .and_then(|caps| caps.get(1).and_then(|value| value.as_str().parse().ok()));
     Some(RunStats {
-        sources_scanned: caps.get(1).and_then(|value| value.as_str().parse().ok()),
-        articles_fetched: caps.get(2).and_then(|value| value.as_str().parse().ok()),
-        articles_selected: caps.get(4).and_then(|value| value.as_str().parse().ok()),
+        sources_scanned: caps.get(2).and_then(|value| value.as_str().parse().ok()),
+        articles_fetched: None,
+        articles_selected: selected,
     })
+}
+
+fn parse_feed_failures(raw: &str) -> Vec<FeedFailure> {
+    let Ok(regex) = Regex::new(r"(?m)^\[digest\]\s*(?:⚠️\s*)?Feed failure:\s*(?P<source>.+?)\s*\|\s*(?P<reason>.+?)\s*$") else {
+        return Vec::new();
+    };
+    let mut failures: Vec<FeedFailure> = regex
+        .captures_iter(raw)
+        .map(|caps| FeedFailure {
+            source: caps
+                .name("source")
+                .map(|value| value.as_str().trim().to_string())
+                .unwrap_or_default(),
+            reason: caps
+                .name("reason")
+                .map(|value| value.as_str().trim().to_string())
+                .unwrap_or_default(),
+        })
+        .filter(|failure| !failure.source.is_empty())
+        .collect();
+
+    if !failures.is_empty() {
+        return failures;
+    }
+
+    let Ok(warning_regex) = Regex::new(r"(?m)\[digest\]\s*(?:✗|\\u2717)\s*(?P<source>[^:]+):\s*(?P<reason>.+?)\s*$") else {
+        return Vec::new();
+    };
+    failures = warning_regex
+        .captures_iter(raw)
+        .map(|caps| FeedFailure {
+            source: caps
+                .name("source")
+                .map(|value| value.as_str().trim().to_string())
+                .unwrap_or_default(),
+            reason: caps
+                .name("reason")
+                .map(|value| value.as_str().trim().to_string())
+                .unwrap_or_default(),
+        })
+        .filter(|failure| !failure.source.is_empty())
+        .collect();
+
+    if !failures.is_empty() {
+        return failures;
+    }
+
+    parse_feed_progress(raw)
+        .and_then(|(_, _, ok, failed)| {
+            (failed > 0).then(|| FeedFailure {
+                source: format!("{failed} failed feeds"),
+                reason: format!("{ok} feeds succeeded. Open the run log for source-level details."),
+            })
+        })
+        .into_iter()
+        .collect()
+}
+
+fn parse_feed_progress(raw: &str) -> Option<(u32, u32, u32, u32)> {
+    let regex = Regex::new(r"Progress:\s*(\d+)/(\d+)\s+feeds processed\s+\((\d+)\s+ok,\s+(\d+)\s+failed\)").ok()?;
+    let caps = regex.captures_iter(raw).last()?;
+    Some((
+        caps.get(1)?.as_str().parse().ok()?,
+        caps.get(2)?.as_str().parse().ok()?,
+        caps.get(3)?.as_str().parse().ok()?,
+        caps.get(4)?.as_str().parse().ok()?,
+    ))
+}
+
+fn is_post_report_output_error(raw: &str) -> bool {
+    let lower = raw.to_lowercase();
+    lower.contains("unicodeencodeerror") && (lower.contains("[digest] done") || lower.contains("step 5/5"))
+}
+
+fn normalize_finished_report_run(run: &mut RunRecord) -> bool {
+    if run.status != "failed" {
+        return false;
+    }
+    let Some(output) = run.output.as_ref() else {
+        return false;
+    };
+    let Some(markdown_path) = output.markdown_path.as_ref().or(output.report_path.as_ref()) else {
+        return false;
+    };
+    if !Path::new(markdown_path).exists() {
+        return false;
+    }
+    let raw = run
+        .error
+        .as_ref()
+        .and_then(|error| error.raw.as_deref())
+        .unwrap_or_default()
+        .to_string();
+    let error_type = run
+        .error
+        .as_ref()
+        .map(|error| error.error_type.as_str())
+        .unwrap_or_default();
+    if error_type != "feed_fetch_failed" && !is_post_report_output_error(&raw) {
+        return false;
+    }
+
+    let markdown = fs::read_to_string(markdown_path).unwrap_or_default();
+    let feed_failures = parse_feed_failures(&raw);
+    run.status = "success".to_string();
+    run.error = None;
+    run.stats = parse_stats(&raw).or_else(|| run.stats.clone());
+    run.top_picks = Some(parse_top_picks(&markdown));
+    if !feed_failures.is_empty() {
+        run.warnings = Some(RunWarnings {
+            feed_failures: Some(feed_failures),
+        });
+    }
+    true
 }
 
 fn parse_top_picks(markdown: &str) -> Vec<TopPick> {

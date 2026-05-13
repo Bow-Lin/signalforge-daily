@@ -18,23 +18,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ai-news-collection"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "dirs",
- "opener",
- "regex",
- "rfd",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "thiserror 2.0.18",
- "uuid",
-]
-
-[[package]]
 name = "alloc-no-stdlib"
 version = "2.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3219,6 +3202,23 @@ checksum = "c4db69cba1110affc0e9f7bcd48bbf87b3f4fc7c61fc9155afd4c469eb3d6c1b"
 dependencies = [
  "errno",
  "libc",
+]
+
+[[package]]
+name = "signalforge-daily"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dirs",
+ "opener",
+ "regex",
+ "rfd",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "thiserror 2.0.18",
+ "uuid",
 ]
 
 [[package]]

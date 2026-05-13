@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 
-from news_collection.graph import build_graph
+from signalforge_daily.graph import build_graph
 
 
 def _parse_args() -> argparse.Namespace:

@@ -1,12 +1,12 @@
 [package]
-name = "ai-news-collection"
+name = "signalforge-daily"
 version = "0.1.0"
 description = "Local-first desktop wrapper for AI daily digest generation"
-authors = ["news_collection contributors"]
+authors = ["signalforge_daily contributors"]
 edition = "2021"
 
 [lib]
-name = "ai_news_collection_lib"
+name = "signalforge_daily_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

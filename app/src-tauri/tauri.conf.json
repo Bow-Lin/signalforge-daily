@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "AI News Collection",
+  "productName": "SignalForge Daily",
   "version": "0.1.0",
-  "identifier": "local.news-collection.ai-digest",
+  "identifier": "local.signalforge.daily",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://127.0.0.1:5173",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "AI News Collection",
+        "title": "SignalForge Daily",
         "width": 1280,
         "height": 820,
         "minWidth": 980,

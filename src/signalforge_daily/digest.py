@@ -479,7 +479,7 @@ def _fetch_feed(source: FeedSource, timeout_s: int, *, since: datetime | None = 
         return _fetch_blog_source(source, timeout_s, since=since)
 
     headers = {
-        "User-Agent": "news-collection-digest/1.0 (+https://example.com)",
+        "User-Agent": "signalforge-daily-digest/1.0 (+https://example.com)",
         "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
     }
     resp = requests.get(source.xml_url, headers=headers, timeout=timeout_s)

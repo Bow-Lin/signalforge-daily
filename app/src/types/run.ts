@@ -27,6 +27,11 @@ export type TopPick = {
   reason?: string;
 };
 
+export type FeedFailure = {
+  source: string;
+  reason: string;
+};
+
 export type RunRecord = {
   id: string;
   type: "digest";
@@ -54,6 +59,9 @@ export type RunRecord = {
     logPath?: string;
   };
   topPicks?: TopPick[];
+  warnings?: {
+    feedFailures?: FeedFailure[];
+  };
   error?: DigestError;
 };
 

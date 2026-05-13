@@ -52,7 +52,7 @@ export function App() {
   const runningRun = useMemo(() => snapshot.runs.find((run) => run.status === "running"), [snapshot.runs]);
 
   if (loading) {
-    return <div className="boot">Loading local workspace...</div>;
+    return <div className="boot">正在读取本地工作区...</div>;
   }
 
   if (route === "setup" || !snapshot.config) {

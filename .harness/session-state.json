@@ -2,17 +2,18 @@
   "task_id": "desktop-app-v0.1-2026-05-11",
   "status": "completed",
   "current_phase": "handoff_ready",
-  "last_updated": "2026-05-12T00:00:00+08:00",
+  "last_updated": "2026-05-13T00:00:00+08:00",
   "active_plan": [
-    "Replace the Electron shell with Tauri v2 while preserving the React renderer.",
-    "Move local config, run history, report scanning, file actions, and digest runner commands into Rust.",
-    "Configure a Python sidecar path for packaged builds and keep a uv-based sidecar launcher for v0.1.",
-    "Run available verification and record skipped checks or limitations."
+    "Chinese-localize visible Today page and primary navigation copy.",
+    "Promote Today summary and Top Picks above technical run metadata.",
+    "Render Top Picks as reader-focused cards with source, tags, recommendation reason, and actions.",
+    "Move report path, duration, current step, failed feeds, raw fetched count, and logs into collapsed run details.",
+    "Run frontend verification and update handoff records."
   ],
   "next_3_steps": [
-    "Run cd app && npm run app:dev with a real API key and generate one digest.",
-    "Run cd app && npm run app:dev with a real API key and confirm Test connection returns Connection test passed.",
-    "Add a packaging step that freezes the Python backend into a true standalone sidecar executable."
+    "Run npm run app:dev and visually inspect the Tauri-rendered Today page with real local data.",
+    "Decide whether Favorites/Sources should become real routes or stay as disabled placeholders.",
+    "Plan the next desktop polish pass after the landed SignalForge Daily rename and Today redesign."
   ],
   "changed_files": [
     ".gitignore",
@@ -23,6 +24,7 @@
     "docs/verification.md",
     ".harness/session-state.json",
     ".harness/session-log.md",
+    "AGENTS.md",
     "app/index.html",
     "app/package-lock.json",
     "app/package.json",
@@ -34,11 +36,14 @@
     "app/src/app/routes.ts",
     "app/src/components/AppShell.tsx",
     "app/src/components/ErrorRecoveryCard.tsx",
+    "app/src/components/FeedWarningsCard.tsx",
+    "app/src/components/TodayOverviewCard.tsx",
     "app/src/components/LatestDigestCard.tsx",
     "app/src/components/MarkdownPreview.tsx",
     "app/src/components/RunStatusCard.tsx",
     "app/src/components/SettingsForm.tsx",
     "app/src/components/TopPicksList.tsx",
+    "app/src/app/App.tsx",
     "app/src/pages/ReportsPage.tsx",
     "app/src/pages/SettingsPage.tsx",
     "app/src/pages/SetupPage.tsx",
@@ -61,25 +66,33 @@
     "app/src-tauri/sidecar/digest-sidecar/src/main.rs",
     "app/src-tauri/src/lib.rs",
     "app/src-tauri/src/main.rs"
+    ,
+    "pyproject.toml",
+    "uv.lock",
+    "scripts/graph_viz.py",
+    "scripts/run_digest_with_retry.sh",
+    "tests/test_digest.py",
+    "src/signalforge_daily/"
   ],
   "validation": {
     "last_commands": [
-      "cd app && npm install",
       "cd app && npm run build",
       "cd app && npm run sidecar:build",
-      "cd app/src-tauri && cargo check from Visual Studio Developer Command Prompt",
+      "cd app/src-tauri && cargo check",
       "uv run python -m pytest -q",
-      "uv run python -m news_collection.digest_cli --help"
+      "uv run python -m signalforge_daily.digest_cli --help"
     ],
-    "last_result": "passed; real digest generation skipped because no API key was provided; Test connection now performs a live provider ping when used in the app",
+    "last_result": "passed for frontend build, sidecar build, Rust check, Python tests, and digest CLI help; Browser/IAB visual smoke check skipped because no callable Browser/IAB tool was exposed and the renderer depends on Tauri invoke runtime",
     "known_failures": [
       "Real digest generation requires API credentials and network access.",
-      "npm warns about unknown electron-mirror env config, but install/build succeeded."
+      "uv editable rebuild previously failed to fetch setuptools from PyPI due TLS handshake EOF; latest pytest run passed.",
+      "npm warns about unknown electron-mirror env config, but build succeeded.",
+      "Browser/IAB visual QA was not available in the Today redesign session."
     ]
   },
   "cognitive_state": {
     "failure_count": 0,
-    "current_mode": "desktop_app_implementation",
+    "current_mode": "desktop_app_handoff",
     "tried_approaches": [
       "Harness context restoration",
       "Digest CLI contract review",
@@ -87,12 +100,16 @@
       "Tauri migration",
       "Rust and Visual Studio C++ Build Tools installation",
       "Sidecar launcher implementation",
-      "Frontend, Rust, sidecar, and Python verification"
+      "Frontend, Rust, sidecar, and Python verification",
+      "Full SignalForge Daily package rename",
+      "Today quick digest controls",
+      "Report-backed partial feed failure normalization",
+      "Today reading-page hierarchy and Chinese UX redesign"
     ],
     "blocked_on": null
   },
   "handoff": {
-    "last_summary": "Implemented requested Tauri + React + Rust shell + digest sidecar architecture and changed Settings Test connection to perform a live OpenAI-compatible ping. Renderer build, cargo check, and pytest passed.",
-    "resume_from": "Run the app with npm run app:dev, configure a real API key, confirm Test connection passes, then perform the first live digest generation smoke test."
+    "last_summary": "Restructured Today into a Chinese-first reading page with summary overview, card-based Top Picks, collapsed run details, friendly unknown-state fallbacks, and simplified reader actions. Commit-main verification passed.",
+    "resume_from": "Run npm run app:dev for a real Tauri visual check, then decide whether Favorites/Sources should become real routes."
   }
 }

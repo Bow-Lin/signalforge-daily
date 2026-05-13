@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from news_collection.digest import (
+from signalforge_daily.digest import (
     DigestStats,
     FeedSource,
     ScoreBreakdown,
@@ -14,7 +14,7 @@ from news_collection.digest import (
     parse_feed_items,
     parse_json_response,
 )
-from news_collection.blog_tracker.sources.base import ListedPost
+from signalforge_daily.blog_tracker.sources.base import ListedPost
 
 
 def test_parse_json_response_with_code_fence() -> None:
@@ -144,7 +144,7 @@ def test_fetch_all_feeds_supports_openai_blog_sources(monkeypatch) -> None:
             assert url == "https://developers.openai.com/blog/test-post"
             return "<html><body><article><p>OpenAI blog body.</p></article></body></html>"
 
-    monkeypatch.setattr("news_collection.digest.OpenAIDevBlogClient", _FakeOpenAIClient)
+    monkeypatch.setattr("signalforge_daily.digest.OpenAIDevBlogClient", _FakeOpenAIClient)
 
     articles, stats = fetch_all_feeds(
         [

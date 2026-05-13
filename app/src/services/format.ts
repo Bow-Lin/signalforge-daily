@@ -1,5 +1,5 @@
 export function formatDateTime(value?: string): string {
-  if (!value) return "Not available";
+  if (!value) return "未记录";
   return new Intl.DateTimeFormat(undefined, {
     year: "numeric",
     month: "2-digit",
@@ -10,7 +10,7 @@ export function formatDateTime(value?: string): string {
 }
 
 export function formatDuration(ms?: number): string {
-  if (!ms) return "Not available";
+  if (!ms) return "未记录";
   const seconds = Math.round(ms / 1000);
   const minutes = Math.floor(seconds / 60);
   const rest = seconds % 60;

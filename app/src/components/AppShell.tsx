@@ -14,8 +14,8 @@ export function AppShell({ route, onRouteChange, children }: Props) {
         <div className="brand">
           <span className="brand-mark">AI</span>
           <div>
-            <strong>News Collection</strong>
-            <span>Daily Digest</span>
+            <strong>SignalForge Daily</strong>
+            <span>技术信号日报</span>
           </div>
         </div>
         <nav>
@@ -28,6 +28,8 @@ export function AppShell({ route, onRouteChange, children }: Props) {
               {item.label}
             </button>
           ))}
+          <button className="nav-item disabled" disabled>收藏</button>
+          <button className="nav-item disabled" disabled>信息源</button>
         </nav>
       </aside>
       <main className="content">{children}</main>

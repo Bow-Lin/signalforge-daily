@@ -91,22 +91,24 @@ def main() -> int:
         feeds=feeds,
     )
 
-    print("[digest] ✅ Done!")
-    print(f"[digest] 📁 Report: {result.output_path}")
+    print("[digest] Done!")
+    print(f"[digest] Report: {result.output_path}")
     print(
-        "[digest] 📊 Stats: "
-        f"{result.stats.success_feeds} sources → {result.stats.total_articles} articles "
-        f"→ {result.stats.filtered_articles} recent → {len(result.articles)} selected"
+        "[digest] Stats: "
+        f"{result.stats.success_feeds} sources -> {result.stats.total_articles} articles "
+        f"-> {result.stats.filtered_articles} recent -> {len(result.articles)} selected"
     )
 
     if result.articles:
-        print("[digest] 🏆 Top 3 Preview:")
+        print("[digest] Top 3 Preview:")
         for idx, article in enumerate(result.articles[:3], start=1):
             print(f"  {idx}. {article.title_zh or article.title}")
             print(f"     {article.summary[:80]}...")
 
     if result.fetch_failures:
-        print(f"[digest] ⚠️ Feed failures: {len(result.fetch_failures)}")
+        print(f"[digest] Feed failures: {len(result.fetch_failures)}")
+        for name, reason in sorted(result.fetch_failures.items()):
+            print(f"[digest] Feed failure: {name} | {reason}")
 
     return 0
 

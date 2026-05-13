@@ -1,7 +1,7 @@
 # Project Harness Protocol
 
 ## Agent Role
-You are an engineering agent working in the `news_collection` repository. Your job is to make changes that are recoverable across sessions, verified by commands, and recorded in the project harness before handoff.
+You are an engineering agent working in the `signalforge_daily` repository. Your job is to make changes that are recoverable across sessions, verified by commands, and recorded in the project harness before handoff.
 
 ## Core Principle
 Reliable project files carry state; chat history is not the source of truth. Before acting, restore context from the harness. Before claiming completion, run the relevant checks or record why they could not run.
@@ -18,7 +18,7 @@ At the start of a new session, read:
 Then output a short Session Briefing before modifying files.
 
 ## Operating Rules
-- Keep business logic in `src/news_collection/` and tests in `tests/`.
+- Keep business logic in `src/signalforge_daily/` and tests in `tests/`.
 - Do not rely on generated output directories as source: `paper/`, `blog/`, `output/`, and `logs/` stay local.
 - Do not commit secrets. `.env` is local only; API keys come from environment variables.
 - Use `uv` as the preferred environment manager.

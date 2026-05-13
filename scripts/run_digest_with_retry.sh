@@ -28,7 +28,7 @@ has_network() {
 
 run_digest() {
   unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY
-  uv run python -m news_collection.digest_cli --hours 24 --top-n 15 --lang zh >>"${LOG_FILE}" 2>&1
+  uv run python -m signalforge_daily.digest_cli --hours 24 --top-n 15 --lang zh >>"${LOG_FILE}" 2>&1
 }
 
 for ((attempt = 1; attempt <= MAX_RETRIES; attempt++)); do

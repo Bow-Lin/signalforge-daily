@@ -18,7 +18,7 @@ powershell -ExecutionPolicy Bypass -File .\src-tauri\sidecar\build-digest-sideca
 The launcher delegates to:
 
 ```bash
-uv run python -m news_collection.digest_cli
+uv run python -m signalforge_daily.digest_cli
 ```
 
 from the repository root. A later packaging step can replace this launcher with a frozen Python backend executable created by PyInstaller, Nuitka, or a similar tool.
