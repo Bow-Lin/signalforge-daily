@@ -1,6 +1,7 @@
 import type { DigestLanguage } from "./config";
 
 export type RunStatus = "pending" | "running" | "success" | "failed" | "cancelled";
+export type RunTrigger = "manual" | "scheduled" | "startup_missed";
 
 export type DigestErrorType =
   | "missing_api_key"
@@ -25,6 +26,10 @@ export type TopPick = {
   url?: string;
   publishedAt?: string;
   reason?: string;
+  itemId?: string;
+  matchedTopics?: string[];
+  contentType?: string;
+  relevanceScore?: number;
 };
 
 export type FeedFailure = {
@@ -36,6 +41,7 @@ export type RunRecord = {
   id: string;
   type: "digest";
   status: RunStatus;
+  trigger: RunTrigger;
   startedAt: string;
   finishedAt?: string;
   durationMs?: number;
@@ -59,10 +65,35 @@ export type RunRecord = {
     logPath?: string;
   };
   topPicks?: TopPick[];
+  sourceRunStats?: SourceRunStat[];
   warnings?: {
     feedFailures?: FeedFailure[];
   };
   error?: DigestError;
+};
+
+export type SourceRunStat = {
+  runId: string;
+  sourceId: string;
+  sourceName: string;
+  sourceType: string;
+  enabled: boolean;
+  fetchedCount: number;
+  candidateCount: number;
+  selectedCount: number;
+  status: "success" | "failed" | "partial";
+  errorType?: string;
+  errorMessage?: string;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+};
+
+export type ItemFeedback = {
+  itemId: string;
+  reportId: string;
+  feedback: "useful" | "not_useful" | "hide_similar";
+  createdAt: string;
 };
 
 export type GenerateDigestEvent =

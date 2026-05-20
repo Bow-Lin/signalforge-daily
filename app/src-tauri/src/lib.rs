@@ -1,4 +1,4 @@
-use chrono::{DateTime, Local, Utc};
+use chrono::{DateTime, Datelike, Duration, Local, LocalResult, NaiveTime, TimeZone, Timelike, Utc};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -10,8 +10,13 @@ use std::{
     process::{Command, Stdio},
     sync::{Arc, Mutex},
     thread,
+    time::Duration as StdDuration,
 };
-use tauri::{AppHandle, Emitter, State};
+use tauri::{
+    menu::{Menu, MenuItem, PredefinedMenuItem},
+    tray::TrayIconBuilder,
+    AppHandle, Emitter, Manager, State,
+};
 
 #[derive(Default)]
 struct AppState {
@@ -27,6 +32,12 @@ struct AppConfig {
     digest_defaults: DigestDefaults,
     network: NetworkConfig,
     advanced: AdvancedConfig,
+    #[serde(default = "default_sources")]
+    sources: Vec<SourceConfig>,
+    #[serde(default)]
+    relevance_profile: RelevanceProfile,
+    #[serde(default)]
+    automation: AutomationConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,10 +75,89 @@ struct AdvancedConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct SourceConfig {
+    id: String,
+    name: String,
+    #[serde(rename = "type")]
+    source_type: String,
+    url: String,
+    enabled: bool,
+    #[serde(default)]
+    tags: Vec<String>,
+    priority: String,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RelevanceProfile {
+    #[serde(default)]
+    interested_topics: Vec<String>,
+    #[serde(default)]
+    muted_topics: Vec<String>,
+    #[serde(default = "default_preferred_content_types")]
+    preferred_content_types: Vec<String>,
+    #[serde(default = "default_profile_language")]
+    language: String,
+}
+
+impl Default for RelevanceProfile {
+    fn default() -> Self {
+        Self {
+            interested_topics: Vec::new(),
+            muted_topics: Vec::new(),
+            preferred_content_types: default_preferred_content_types(),
+            language: default_profile_language(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AutomationConfig {
+    enabled: bool,
+    frequency: String,
+    time_of_day: String,
+    notify_on_success: bool,
+    notify_on_failure: bool,
+    run_on_app_start_if_missed: bool,
+    skip_if_already_generated_today: bool,
+    paused_until: Option<String>,
+}
+
+impl Default for AutomationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            frequency: "daily".to_string(),
+            time_of_day: "08:30".to_string(),
+            notify_on_success: true,
+            notify_on_failure: true,
+            run_on_app_start_if_missed: true,
+            skip_if_already_generated_today: true,
+            paused_until: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct AutomationState {
+    last_scheduled_date: Option<String>,
+    last_startup_missed_date: Option<String>,
+    last_skip_at: Option<String>,
+    last_skip_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct AppSnapshot {
     config: Option<AppConfig>,
     runs: Vec<RunRecord>,
     reports: Vec<ReportRecord>,
+    source_stats: Vec<SourceRunStat>,
+    feedback: Vec<ItemFeedback>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,6 +167,8 @@ struct RunRecord {
     #[serde(rename = "type")]
     run_type: String,
     status: String,
+    #[serde(default = "default_run_trigger")]
+    trigger: String,
     started_at: String,
     finished_at: Option<String>,
     duration_ms: Option<i64>,
@@ -84,6 +176,7 @@ struct RunRecord {
     stats: Option<RunStats>,
     output: Option<RunOutput>,
     top_picks: Option<Vec<TopPick>>,
+    source_run_stats: Option<Vec<SourceRunStat>>,
     warnings: Option<RunWarnings>,
     error: Option<DigestError>,
 }
@@ -147,6 +240,38 @@ struct TopPick {
     url: Option<String>,
     published_at: Option<String>,
     reason: Option<String>,
+    item_id: Option<String>,
+    matched_topics: Option<Vec<String>>,
+    content_type: Option<String>,
+    relevance_score: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SourceRunStat {
+    run_id: String,
+    source_id: String,
+    source_name: String,
+    source_type: String,
+    enabled: bool,
+    fetched_count: u32,
+    candidate_count: u32,
+    selected_count: u32,
+    status: String,
+    error_type: Option<String>,
+    error_message: Option<String>,
+    started_at: String,
+    finished_at: String,
+    duration_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ItemFeedback {
+    item_id: String,
+    report_id: String,
+    feedback: String,
+    created_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -172,6 +297,16 @@ struct TestConnectionResult {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AutomationStatus {
+    enabled: bool,
+    paused: bool,
+    next_run_at: Option<String>,
+    last_automation_run: Option<RunRecord>,
+    last_skip_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 enum DigestEvent {
     Started { run_id: String, record: RunRecord },
@@ -189,20 +324,96 @@ enum DigestEvent {
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .manage(AppState::default())
+        .setup(|app| {
+            setup_tray(app)?;
+            start_scheduler(app.handle().clone());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
             choose_folder,
             save_config,
             test_connection,
             generate_digest,
+            get_automation_status,
+            set_automation_paused,
             read_markdown,
             open_path,
             reveal_path,
-            delete_run
+            delete_run,
+            save_item_feedback
         ])
         .run(tauri::generate_context!())
         .expect("error while running SignalForge Daily");
+}
+
+fn default_sources() -> Vec<SourceConfig> {
+    Vec::new()
+}
+
+fn default_preferred_content_types() -> Vec<String> {
+    vec![
+        "engineering_blog".to_string(),
+        "research_paper".to_string(),
+        "open_source_release".to_string(),
+        "product_update".to_string(),
+        "opinion".to_string(),
+    ]
+}
+
+fn default_profile_language() -> String {
+    "mixed".to_string()
+}
+
+fn default_run_trigger() -> String {
+    "manual".to_string()
+}
+
+fn built_in_sources() -> Vec<SourceConfig> {
+    let now = Utc::now().to_rfc3339();
+    let mut sources = Vec::new();
+    let Ok(root) = repo_root() else {
+        return sources;
+    };
+    let path = root.join("src").join("signalforge_daily").join("digest_feeds.py");
+    let Ok(raw) = fs::read_to_string(path) else {
+        return sources;
+    };
+    let Ok(regex) = Regex::new(r#"\("([^"]+)",\s*"([^"]+)""#) else {
+        return sources;
+    };
+    for caps in regex.captures_iter(&raw) {
+        let Some(name) = caps.get(1).map(|value| value.as_str().to_string()) else { continue };
+        let Some(url) = caps.get(2).map(|value| value.as_str().to_string()) else { continue };
+        let source_type = if url.contains("developers.openai.com") || url.contains("claude.com/blog") {
+            "blog"
+        } else {
+            "rss"
+        };
+        sources.push(SourceConfig {
+            id: stable_source_id(&url),
+            name,
+            source_type: source_type.to_string(),
+            url,
+            enabled: true,
+            tags: Vec::new(),
+            priority: "normal".to_string(),
+            created_at: now.clone(),
+            updated_at: now.clone(),
+        });
+    }
+    sources
+}
+
+fn stable_source_id(value: &str) -> String {
+    let mut hash: u64 = 1469598103934665603;
+    for byte in value.as_bytes() {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(1099511628211);
+    }
+    format!("src-{hash:012x}")
 }
 
 #[tauri::command]
@@ -292,14 +503,23 @@ print("ok")
 
 #[tauri::command]
 fn generate_digest(app: AppHandle, state: State<AppState>) -> Result<RunRecord, String> {
+    start_digest(app, state.active_run.clone(), "manual")
+}
+
+fn start_digest(app: AppHandle, active_run: Arc<Mutex<bool>>, trigger: &str) -> Result<RunRecord, String> {
     let config = load_config()?.ok_or_else(|| "Workspace is not configured".to_string())?;
+    ensure_workspace_dirs(&config)?;
     if config.ai_provider.api_key.trim().is_empty() {
-        return Err("API key is not configured".to_string());
+        let record = build_failed_preflight_run_record(&config, trigger, "API key is not configured");
+        let run_id = record.id.clone();
+        save_run(&config, &record)?;
+        maybe_send_automation_notification(&app, &config, &record);
+        emit(&app, DigestEvent::Failed { run_id, record: record.clone() });
+        return Ok(record);
     }
 
     {
-        let mut active = state
-            .active_run
+        let mut active = active_run
             .lock()
             .map_err(|_| "Unable to lock run state".to_string())?;
         if *active {
@@ -308,39 +528,9 @@ fn generate_digest(app: AppHandle, state: State<AppState>) -> Result<RunRecord, 
         *active = true;
     }
 
-    ensure_workspace_dirs(&config)?;
     let started = Utc::now();
-    let timestamp = started.format("%Y%m%d-%H%M%S").to_string();
-    let run_id = format!("run-{}", timestamp);
-    let report_path = Path::new(&config.output_path).join(format!("digest-{}.md", timestamp));
-    let log_path = logs_dir(&config).join(format!("{}.log", run_id));
-
-    let record = RunRecord {
-        id: run_id.clone(),
-        run_type: "digest".to_string(),
-        status: "running".to_string(),
-        started_at: started.to_rfc3339(),
-        finished_at: None,
-        duration_ms: None,
-        params_snapshot: ParamsSnapshot {
-            language: config.digest_defaults.language.clone(),
-            time_range_hours: config.digest_defaults.time_range_hours,
-            top_n: config.digest_defaults.top_n,
-            output_path: config.output_path.clone(),
-            model: config.ai_provider.model.clone(),
-        },
-        stats: None,
-        output: Some(RunOutput {
-            report_path: Some(report_path.to_string_lossy().to_string()),
-            markdown_path: Some(report_path.to_string_lossy().to_string()),
-            html_path: None,
-            json_path: None,
-            log_path: Some(log_path.to_string_lossy().to_string()),
-        }),
-        top_picks: None,
-        warnings: None,
-        error: None,
-    };
+    let (record, report_path, log_path) = build_running_run_record(&config, trigger, started);
+    let run_id = record.id.clone();
 
     save_run(&config, &record)?;
     emit(&app, DigestEvent::Started { run_id: run_id.clone(), record: record.clone() });
@@ -353,7 +543,6 @@ fn generate_digest(app: AppHandle, state: State<AppState>) -> Result<RunRecord, 
         },
     );
 
-    let active_run = state.active_run.clone();
     let record_for_worker = record.clone();
     thread::spawn(move || {
         let _ = run_digest_process(app, config, record_for_worker, report_path, log_path);
@@ -363,6 +552,57 @@ fn generate_digest(app: AppHandle, state: State<AppState>) -> Result<RunRecord, 
     });
 
     Ok(record)
+}
+
+fn build_running_run_record(config: &AppConfig, trigger: &str, started: DateTime<Utc>) -> (RunRecord, PathBuf, PathBuf) {
+    let timestamp = started.format("%Y%m%d-%H%M%S").to_string();
+    let run_id = format!("run-{}", timestamp);
+    let report_path = Path::new(&config.output_path).join(format!("digest-{}.md", timestamp));
+    let log_path = logs_dir(config).join(format!("{}.log", run_id));
+
+    (
+        RunRecord {
+            id: run_id.clone(),
+            run_type: "digest".to_string(),
+            status: "running".to_string(),
+            trigger: trigger.to_string(),
+            started_at: started.to_rfc3339(),
+            finished_at: None,
+            duration_ms: None,
+            params_snapshot: ParamsSnapshot {
+                language: config.digest_defaults.language.clone(),
+                time_range_hours: config.digest_defaults.time_range_hours,
+                top_n: config.digest_defaults.top_n,
+                output_path: config.output_path.clone(),
+                model: config.ai_provider.model.clone(),
+            },
+            stats: None,
+            output: Some(RunOutput {
+                report_path: Some(report_path.to_string_lossy().to_string()),
+                markdown_path: Some(report_path.to_string_lossy().to_string()),
+                html_path: None,
+                json_path: None,
+                log_path: Some(log_path.to_string_lossy().to_string()),
+            }),
+            top_picks: None,
+            source_run_stats: None,
+            warnings: None,
+            error: None,
+        },
+        report_path,
+        log_path,
+    )
+}
+
+fn build_failed_preflight_run_record(config: &AppConfig, trigger: &str, raw: &str) -> RunRecord {
+    let started = Utc::now();
+    let finished = Utc::now();
+    let (mut record, _, _) = build_running_run_record(config, trigger, started);
+    record.status = "failed".to_string();
+    record.finished_at = Some(finished.to_rfc3339());
+    record.duration_ms = Some(finished.signed_duration_since(started).num_milliseconds());
+    record.error = Some(classify_digest_error(raw));
+    record
 }
 
 #[tauri::command]
@@ -412,6 +652,34 @@ fn delete_run(run_id: String) -> Result<AppSnapshot, String> {
     snapshot()
 }
 
+#[tauri::command]
+fn save_item_feedback(feedback: ItemFeedback) -> Result<AppSnapshot, String> {
+    if let Some(config) = load_config()? {
+        let mut items = read_feedback(&config)?;
+        items.retain(|item| !(item.item_id == feedback.item_id && item.report_id == feedback.report_id));
+        items.push(feedback);
+        write_json(&feedback_path(&config), &items)?;
+    }
+    snapshot()
+}
+
+#[tauri::command]
+fn get_automation_status() -> Result<AutomationStatus, String> {
+    automation_status()
+}
+
+#[tauri::command]
+fn set_automation_paused(paused: bool) -> Result<AppSnapshot, String> {
+    let mut config = load_config()?.ok_or_else(|| "Workspace is not configured".to_string())?;
+    config.automation.paused_until = if paused {
+        Some((Utc::now() + Duration::days(3650)).to_rfc3339())
+    } else {
+        None
+    };
+    persist_config(&config)?;
+    snapshot()
+}
+
 fn run_digest_process(
     app: AppHandle,
     config: AppConfig,
@@ -426,7 +694,8 @@ fn run_digest_process(
         .open(&log_path)
         .map_err(|err| err.to_string())?;
 
-    let mut command = digest_command(&config, &report_path)?;
+    let source_stats_output = metadata_dir(&config).join(format!("{}-source-stats.json", run_id));
+    let mut command = digest_command(&config, &record.id, &report_path, &source_stats_output)?;
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = command.spawn().map_err(|err| err.to_string())?;
     let stdout = child.stdout.take();
@@ -473,9 +742,12 @@ fn run_digest_process(
 
     if (status.success() || is_post_report_output_error(&raw)) && report_path.exists() {
         let markdown = fs::read_to_string(&report_path).unwrap_or_default();
+        let source_run_stats = read_source_stats_output(&source_stats_output).unwrap_or_default();
         record.status = "success".to_string();
         record.top_picks = Some(parse_top_picks(&markdown));
+        record.source_run_stats = Some(source_run_stats.clone());
         record.stats = parse_stats(&raw);
+        let _ = save_source_stats(&config, &source_run_stats);
         let feed_failures = parse_feed_failures(&raw);
         if !feed_failures.is_empty() {
             record.warnings = Some(RunWarnings {
@@ -491,12 +763,17 @@ fn run_digest_process(
                 message: "Digest generated successfully.".to_string(),
             },
         );
+        maybe_send_automation_notification(&app, &config, &record);
         emit(&app, DigestEvent::Completed { run_id, record });
     } else {
         let error = classify_digest_error(&raw);
+        let source_run_stats = read_source_stats_output(&source_stats_output).unwrap_or_default();
         record.status = "failed".to_string();
+        record.source_run_stats = Some(source_run_stats.clone());
         record.error = Some(error);
+        let _ = save_source_stats(&config, &source_run_stats);
         save_run(&config, &record)?;
+        maybe_send_automation_notification(&app, &config, &record);
         emit(&app, DigestEvent::Failed { run_id, record });
     }
 
@@ -556,7 +833,57 @@ fn read_process_stream<R: std::io::Read + Send + 'static>(
     })
 }
 
-fn digest_command(config: &AppConfig, report_path: &Path) -> Result<Command, String> {
+fn maybe_send_automation_notification(app: &AppHandle, config: &AppConfig, record: &RunRecord) {
+    if record.trigger == "manual" {
+        return;
+    }
+    let should_notify = (record.status == "success" && config.automation.notify_on_success)
+        || (record.status == "failed" && config.automation.notify_on_failure);
+    if !should_notify {
+        return;
+    }
+    let (title, body) = if record.status == "success" {
+        let sources = record
+            .stats
+            .as_ref()
+            .and_then(|stats| stats.sources_scanned)
+            .unwrap_or(0);
+        let selected = record
+            .stats
+            .as_ref()
+            .and_then(|stats| stats.articles_selected)
+            .unwrap_or(0);
+        (
+            "今日摘要已生成",
+            format!("已从 {sources} 个信息源中筛选出 {selected} 条重要更新。"),
+        )
+    } else {
+        (
+            "今日摘要生成失败",
+            "点击查看失败原因和修复建议。".to_string(),
+        )
+    };
+    let _ = app.emit("app:navigate", "today");
+    let _ = app.emit("automation:notify", serde_json::json!({ "title": title, "body": body }));
+}
+
+fn read_source_stats_output(path: &Path) -> Result<Vec<SourceRunStat>, String> {
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    read_json(path)
+}
+
+fn digest_command(
+    config: &AppConfig,
+    run_id: &str,
+    report_path: &Path,
+    source_stats_output: &Path,
+) -> Result<Command, String> {
+    let sources_path = metadata_dir(config).join(format!("{}-sources.json", run_id));
+    let profile_path = metadata_dir(config).join(format!("{}-relevance-profile.json", run_id));
+    write_json(&sources_path, &config.sources)?;
+    write_json(&profile_path, &config.relevance_profile)?;
     let mut args = vec![
         "--hours".to_string(),
         config.digest_defaults.time_range_hours.to_string(),
@@ -576,6 +903,14 @@ fn digest_command(config: &AppConfig, report_path: &Path) -> Result<Command, Str
         config.advanced.ai_retries.unwrap_or(1).to_string(),
         "--max-ai-articles".to_string(),
         config.advanced.max_ai_articles.unwrap_or(120).to_string(),
+        "--sources-config".to_string(),
+        sources_path.to_string_lossy().to_string(),
+        "--relevance-profile".to_string(),
+        profile_path.to_string_lossy().to_string(),
+        "--source-stats-output".to_string(),
+        source_stats_output.to_string_lossy().to_string(),
+        "--run-id".to_string(),
+        run_id.to_string(),
     ];
     if let Some(base_url) = config.ai_provider.base_url.as_ref().filter(|value| !value.trim().is_empty()) {
         args.push("--iflow-base-url".to_string());
@@ -662,7 +997,17 @@ fn snapshot() -> Result<AppSnapshot, String> {
         .map(|cfg| read_reports(cfg, &runs))
         .transpose()?
         .unwrap_or_default();
-    Ok(AppSnapshot { config, runs, reports })
+    let source_stats = config
+        .as_ref()
+        .map(read_source_stats)
+        .transpose()?
+        .unwrap_or_default();
+    let feedback = config
+        .as_ref()
+        .map(read_feedback)
+        .transpose()?
+        .unwrap_or_default();
+    Ok(AppSnapshot { config, runs, reports, source_stats, feedback })
 }
 
 fn load_config() -> Result<Option<AppConfig>, String> {
@@ -672,16 +1017,38 @@ fn load_config() -> Result<Option<AppConfig>, String> {
         if let Some(workspace) = pointer.get("workspacePath").and_then(|value| value.as_str()) {
             let workspace_config = Path::new(workspace).join("app-config.json");
             if workspace_config.exists() {
-                return read_json(&workspace_config).map(Some);
+                let mut config: AppConfig = read_json(&workspace_config)?;
+                hydrate_config_defaults(&mut config);
+                return Ok(Some(config));
             }
         }
     }
     Ok(None)
 }
 
+fn hydrate_config_defaults(config: &mut AppConfig) {
+    if config.sources.is_empty() {
+        config.sources = built_in_sources();
+    }
+    if config.relevance_profile.preferred_content_types.is_empty() {
+        config.relevance_profile.preferred_content_types = default_preferred_content_types();
+    }
+    if config.relevance_profile.language.trim().is_empty() {
+        config.relevance_profile.language = default_profile_language();
+    }
+    if config.automation.frequency.trim().is_empty() {
+        config.automation.frequency = "daily".to_string();
+    }
+    if NaiveTime::parse_from_str(&config.automation.time_of_day, "%H:%M").is_err() {
+        config.automation.time_of_day = "08:30".to_string();
+    }
+}
+
 fn persist_config(config: &AppConfig) -> Result<(), String> {
-    ensure_workspace_dirs(config)?;
-    write_json(&Path::new(&config.workspace_path).join("app-config.json"), config)?;
+    let mut config = config.clone();
+    hydrate_config_defaults(&mut config);
+    ensure_workspace_dirs(&config)?;
+    write_json(&Path::new(&config.workspace_path).join("app-config.json"), &config)?;
     let pointer_path = pointer_config_path()?;
     if let Some(parent) = pointer_path.parent() {
         fs::create_dir_all(parent).map_err(|err| err.to_string())?;
@@ -695,7 +1062,8 @@ fn ensure_workspace_dirs(config: &AppConfig) -> Result<(), String> {
     fs::create_dir_all(&config.workspace_path).map_err(|err| err.to_string())?;
     fs::create_dir_all(&config.output_path).map_err(|err| err.to_string())?;
     fs::create_dir_all(runs_dir(config)).map_err(|err| err.to_string())?;
-    fs::create_dir_all(logs_dir(config)).map_err(|err| err.to_string())
+    fs::create_dir_all(logs_dir(config)).map_err(|err| err.to_string())?;
+    fs::create_dir_all(metadata_dir(config)).map_err(|err| err.to_string())
 }
 
 fn read_runs(config: &AppConfig) -> Result<Vec<RunRecord>, String> {
@@ -802,6 +1170,254 @@ fn save_run(config: &AppConfig, record: &RunRecord) -> Result<(), String> {
     write_json(&runs_dir(config).join(format!("{}.json", record.id)), record)
 }
 
+fn setup_tray(app: &mut tauri::App) -> tauri::Result<()> {
+    let open = MenuItem::with_id(app, "tray_open", "打开 SignalForge Daily", true, None::<&str>)?;
+    let generate = MenuItem::with_id(app, "tray_generate", "生成今日摘要", true, None::<&str>)?;
+    let latest_report = MenuItem::with_id(app, "tray_report", "打开最新报告", true, None::<&str>)?;
+    let sources = MenuItem::with_id(app, "tray_sources", "查看信息源状态", true, None::<&str>)?;
+    let pause = MenuItem::with_id(app, "tray_pause", "暂停自动生成 / 恢复自动生成", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "tray_quit", "退出", true, None::<&str>)?;
+    let separator = PredefinedMenuItem::separator(app)?;
+    let menu = Menu::with_items(app, &[&open, &generate, &latest_report, &sources, &pause, &separator, &quit])?;
+    let mut tray = TrayIconBuilder::with_id("main")
+        .menu(&menu)
+        .tooltip("SignalForge Daily")
+        .show_menu_on_left_click(true)
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "tray_open" => {
+                show_main_window(app);
+                let _ = app.emit("app:navigate", "today");
+            }
+            "tray_generate" => {
+                show_main_window(app);
+                let active_run = app.state::<AppState>().active_run.clone();
+                if let Err(err) = start_digest(app.clone(), active_run, "manual") {
+                    let _ = app.emit("digest:event", DigestEvent::Log {
+                        run_id: "tray".to_string(),
+                        level: "warn".to_string(),
+                        message: err,
+                    });
+                }
+            }
+            "tray_report" => {
+                show_main_window(app);
+                let _ = app.emit("app:navigate", "reports");
+            }
+            "tray_sources" => {
+                show_main_window(app);
+                let _ = app.emit("app:navigate", "sources");
+            }
+            "tray_pause" => {
+                if let Ok(Some(mut config)) = load_config() {
+                    config.automation.paused_until = if is_automation_paused(&config.automation) {
+                        None
+                    } else {
+                        Some((Utc::now() + Duration::days(3650)).to_rfc3339())
+                    };
+                    let _ = persist_config(&config);
+                    let _ = app.emit("automation:changed", ());
+                }
+            }
+            "tray_quit" => app.exit(0),
+            _ => {}
+        });
+    if let Some(icon) = app.default_window_icon().cloned() {
+        tray = tray.icon(icon);
+    }
+    tray.build(app)?;
+    Ok(())
+}
+
+fn show_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+fn start_scheduler(app: AppHandle) {
+    let active_run = app.state::<AppState>().active_run.clone();
+    thread::spawn(move || {
+        let mut first_tick = true;
+        loop {
+            if let Ok(Some(config)) = load_config() {
+                let _ = scheduler_tick(&app, active_run.clone(), &config, first_tick);
+            }
+            first_tick = false;
+            thread::sleep(StdDuration::from_secs(30));
+        }
+    });
+}
+
+fn scheduler_tick(app: &AppHandle, active_run: Arc<Mutex<bool>>, config: &AppConfig, first_tick: bool) -> Result<(), String> {
+    if !config.automation.enabled || is_automation_paused(&config.automation) {
+        return Ok(());
+    }
+    let now = Local::now();
+    if !is_frequency_day(&config.automation, now) {
+        return Ok(());
+    }
+    let Some(due_at) = scheduled_local_for_date(&config.automation, now) else {
+        return Ok(());
+    };
+    if now < due_at {
+        return Ok(());
+    }
+
+    let today = now.format("%Y-%m-%d").to_string();
+    let mut state = read_automation_state(config).unwrap_or_default();
+    if first_tick && config.automation.run_on_app_start_if_missed && state.last_startup_missed_date.as_deref() != Some(&today) {
+        if config.automation.skip_if_already_generated_today && has_successful_digest_today(config)? {
+            mark_startup_missed_consumed(&mut state, &today, Some("今天已生成摘要，启动补跑已跳过。".to_string()));
+            return write_automation_state(config, &state);
+        }
+        if *active_run.lock().map_err(|_| "Unable to lock run state".to_string())? {
+            mark_startup_missed_consumed(&mut state, &today, Some("已有摘要任务正在运行，启动补跑已跳过。".to_string()));
+            return write_automation_state(config, &state);
+        }
+        mark_startup_missed_consumed(&mut state, &today, None);
+        write_automation_state(config, &state)?;
+        return start_digest(app.clone(), active_run, "startup_missed").map(|_| ());
+    }
+
+    if state.last_scheduled_date.as_deref() == Some(&today) {
+        return Ok(());
+    }
+    if config.automation.skip_if_already_generated_today && has_successful_digest_today(config)? {
+        state.last_scheduled_date = Some(today);
+        state.last_skip_at = Some(Utc::now().to_rfc3339());
+        state.last_skip_reason = Some("今天已生成摘要，计划任务已跳过。".to_string());
+        return write_automation_state(config, &state);
+    }
+    if *active_run.lock().map_err(|_| "Unable to lock run state".to_string())? {
+        state.last_scheduled_date = Some(today);
+        state.last_skip_at = Some(Utc::now().to_rfc3339());
+        state.last_skip_reason = Some("已有摘要任务正在运行，计划任务已跳过。".to_string());
+        return write_automation_state(config, &state);
+    }
+    state.last_scheduled_date = Some(today);
+    write_automation_state(config, &state)?;
+    start_digest(app.clone(), active_run, "scheduled").map(|_| ())
+}
+
+fn mark_startup_missed_consumed(state: &mut AutomationState, today: &str, skip_reason: Option<String>) {
+    state.last_startup_missed_date = Some(today.to_string());
+    state.last_scheduled_date = Some(today.to_string());
+    match skip_reason {
+        Some(reason) => {
+            state.last_skip_at = Some(Utc::now().to_rfc3339());
+            state.last_skip_reason = Some(reason);
+        }
+        None => {
+            state.last_skip_at = None;
+            state.last_skip_reason = None;
+        }
+    }
+}
+
+fn automation_status() -> Result<AutomationStatus, String> {
+    let Some(config) = load_config()? else {
+        return Ok(AutomationStatus {
+            enabled: false,
+            paused: false,
+            next_run_at: None,
+            last_automation_run: None,
+            last_skip_reason: None,
+        });
+    };
+    let runs = read_runs(&config)?;
+    let last_automation_run = runs
+        .iter()
+        .find(|run| run.trigger == "scheduled" || run.trigger == "startup_missed")
+        .cloned();
+    let state = read_automation_state(&config).unwrap_or_default();
+    Ok(AutomationStatus {
+        enabled: config.automation.enabled,
+        paused: is_automation_paused(&config.automation),
+        next_run_at: next_run_at(&config.automation).map(|value| value.to_rfc3339()),
+        last_automation_run,
+        last_skip_reason: state.last_skip_reason,
+    })
+}
+
+fn next_run_at(automation: &AutomationConfig) -> Option<DateTime<Local>> {
+    if !automation.enabled || is_automation_paused(automation) {
+        return None;
+    }
+    let now = Local::now();
+    for offset in 0..14 {
+        let candidate_date = now.date_naive() + Duration::days(offset);
+        let midnight = match Local.with_ymd_and_hms(candidate_date.year(), candidate_date.month(), candidate_date.day(), 0, 0, 0) {
+            LocalResult::Single(value) => value,
+            LocalResult::Ambiguous(value, _) => value,
+            LocalResult::None => continue,
+        };
+        if !is_frequency_day(automation, midnight) {
+            continue;
+        }
+        let candidate = scheduled_local_for_date(automation, midnight)?;
+        if candidate > now {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn scheduled_local_for_date(automation: &AutomationConfig, date: DateTime<Local>) -> Option<DateTime<Local>> {
+    let time = NaiveTime::parse_from_str(&automation.time_of_day, "%H:%M")
+        .unwrap_or_else(|_| NaiveTime::from_hms_opt(8, 30, 0).expect("valid default automation time"));
+    match Local.with_ymd_and_hms(date.year(), date.month(), date.day(), time.hour(), time.minute(), 0) {
+        LocalResult::Single(value) => Some(value),
+        LocalResult::Ambiguous(value, _) => Some(value),
+        LocalResult::None => None,
+    }
+}
+
+fn is_frequency_day(automation: &AutomationConfig, date: DateTime<Local>) -> bool {
+    automation.frequency != "weekdays" || date.weekday().number_from_monday() <= 5
+}
+
+fn is_automation_paused(automation: &AutomationConfig) -> bool {
+    automation
+        .paused_until
+        .as_deref()
+        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+        .map(|value| value.with_timezone(&Utc) > Utc::now())
+        .unwrap_or(false)
+}
+
+fn has_successful_digest_today(config: &AppConfig) -> Result<bool, String> {
+    Ok(read_runs(config)?.iter().any(|run| {
+        run.status == "success"
+            && DateTime::parse_from_rfc3339(run.finished_at.as_deref().unwrap_or(&run.started_at))
+                .map(|value| value.with_timezone(&Local).date_naive() == Local::now().date_naive())
+                .unwrap_or(false)
+    }))
+}
+
+fn read_source_stats(config: &AppConfig) -> Result<Vec<SourceRunStat>, String> {
+    let path = source_stats_path(config);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    read_json(&path)
+}
+
+fn save_source_stats(config: &AppConfig, stats: &[SourceRunStat]) -> Result<(), String> {
+    let mut existing = read_source_stats(config)?;
+    existing.extend_from_slice(stats);
+    existing.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+    write_json(&source_stats_path(config), &existing)
+}
+
+fn read_feedback(config: &AppConfig) -> Result<Vec<ItemFeedback>, String> {
+    let path = feedback_path(config);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    read_json(&path)
+}
+
 fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, String> {
     let raw = fs::read_to_string(path).map_err(|err| err.to_string())?;
     serde_json::from_str(&raw).map_err(|err| err.to_string())
@@ -828,6 +1444,34 @@ fn runs_dir(config: &AppConfig) -> PathBuf {
 
 fn logs_dir(config: &AppConfig) -> PathBuf {
     Path::new(&config.workspace_path).join("logs")
+}
+
+fn metadata_dir(config: &AppConfig) -> PathBuf {
+    Path::new(&config.workspace_path).join("metadata")
+}
+
+fn source_stats_path(config: &AppConfig) -> PathBuf {
+    metadata_dir(config).join("source-run-stats.json")
+}
+
+fn feedback_path(config: &AppConfig) -> PathBuf {
+    metadata_dir(config).join("item-feedback.json")
+}
+
+fn automation_state_path(config: &AppConfig) -> PathBuf {
+    metadata_dir(config).join("automation-state.json")
+}
+
+fn read_automation_state(config: &AppConfig) -> Result<AutomationState, String> {
+    let path = automation_state_path(config);
+    if !path.exists() {
+        return Ok(AutomationState::default());
+    }
+    read_json(&path)
+}
+
+fn write_automation_state(config: &AppConfig, state: &AutomationState) -> Result<(), String> {
+    write_json(&automation_state_path(config), state)
 }
 
 fn repo_root() -> Result<PathBuf, String> {
@@ -1008,7 +1652,7 @@ fn parse_top_picks(markdown: &str) -> Vec<TopPick> {
         .nth(1)
         .and_then(|value| value.split("---").next())
         .unwrap_or("");
-    let Ok(regex) = Regex::new(r"(?s)(?:🥇|🥈|🥉)\s+\*\*(?P<title>.+?)\*\*.*?\[(?P<original>.+?)\]\((?P<url>.+?)\)\s+—\s+(?P<source>.+?)\s+·.*?(?:💡 \*\*为什么值得读\*\*: (?P<reason>.+?)\n)?") else {
+    let Ok(regex) = Regex::new(r"(?s)(?:🥇|🥈|🥉)\s+\*\*(?P<title>.+?)\*\*.*?\[(?P<original>.+?)\]\((?P<url>.+?)\)\s+—\s+(?P<source>.+?)\s+·.*?(?:💡 \*\*(?:为什么值得读|Why selected)\*\*: (?P<reason>.+?)\n)?") else {
         return Vec::new();
     };
     regex
@@ -1024,6 +1668,10 @@ fn parse_top_picks(markdown: &str) -> Vec<TopPick> {
             url: caps.name("url").map(|value| value.as_str().trim().to_string()),
             published_at: None,
             reason: caps.name("reason").map(|value| value.as_str().trim().to_string()),
+            item_id: None,
+            matched_topics: None,
+            content_type: None,
+            relevance_score: None,
         })
         .collect()
 }
@@ -1116,5 +1764,76 @@ fn digest_error(kind: &str, message: &str, raw: &str, actions: &[&str]) -> Diges
         message: message.to_string(),
         raw: Some(raw.to_string()),
         suggested_actions: actions.iter().map(|value| value.to_string()).collect(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_config() -> AppConfig {
+        let workspace_path = std::env::temp_dir()
+            .join("signalforge-daily-lib-tests")
+            .to_string_lossy()
+            .to_string();
+        AppConfig {
+            workspace_path: workspace_path.clone(),
+            output_path: Path::new(&workspace_path)
+                .join("reports")
+                .to_string_lossy()
+                .to_string(),
+            ai_provider: AiProvider {
+                provider: "iflow".to_string(),
+                api_key: String::new(),
+                base_url: None,
+                model: "gpt-test".to_string(),
+            },
+            digest_defaults: DigestDefaults {
+                language: "zh".to_string(),
+                time_range_hours: 24,
+                top_n: 6,
+            },
+            network: NetworkConfig {
+                proxy_mode: "none".to_string(),
+                http_proxy: None,
+                https_proxy: None,
+            },
+            advanced: AdvancedConfig {
+                feed_concurrency: None,
+                ai_retries: None,
+                max_ai_articles: None,
+            },
+            sources: Vec::new(),
+            relevance_profile: RelevanceProfile::default(),
+            automation: AutomationConfig::default(),
+        }
+    }
+
+    #[test]
+    fn preflight_failure_run_record_is_failed_with_trigger_and_error() {
+        let config = test_config();
+
+        let record = build_failed_preflight_run_record(
+            &config,
+            "scheduled",
+            "API key is not configured",
+        );
+
+        assert_eq!(record.status, "failed");
+        assert_eq!(record.trigger, "scheduled");
+        assert_eq!(record.error.as_ref().unwrap().error_type, "missing_api_key");
+        assert!(record.finished_at.is_some());
+        assert!(record.output.as_ref().unwrap().log_path.is_some());
+    }
+
+    #[test]
+    fn startup_missed_consumes_scheduled_slot_for_same_day() {
+        let mut state = AutomationState::default();
+
+        mark_startup_missed_consumed(&mut state, "2026-05-20", None);
+
+        assert_eq!(state.last_startup_missed_date.as_deref(), Some("2026-05-20"));
+        assert_eq!(state.last_scheduled_date.as_deref(), Some("2026-05-20"));
+        assert!(state.last_skip_reason.is_none());
     }
 }

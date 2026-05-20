@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import email.utils
+import hashlib
 import html
 import json
 import logging
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable, Literal, TypeVar
@@ -24,6 +25,17 @@ from .digest_feeds import DEFAULT_BLOG_SOURCES, DEFAULT_RSS_FEEDS
 logger = logging.getLogger(__name__)
 
 CategoryId = Literal["ai-ml", "security", "engineering", "tools", "opinion", "other"]
+SourceType = Literal["rss", "github", "arxiv", "blog", "custom"]
+SourcePriority = Literal["high", "normal", "low"]
+SourceRunStatus = Literal["success", "failed", "partial"]
+ContentType = Literal[
+    "engineering_blog",
+    "research_paper",
+    "open_source_release",
+    "product_update",
+    "funding_news",
+    "opinion",
+]
 
 CATEGORY_META: dict[CategoryId, tuple[str, str]] = {
     "ai-ml": ("🤖", "AI / ML"),
@@ -45,6 +57,8 @@ class FeedSource:
     name: str
     xml_url: str
     source_type: Literal["rss", "openai_blog", "claude_blog"] = "rss"
+    id: str = ""
+    display_type: SourceType = "rss"
 
 
 @dataclass(frozen=True)
@@ -55,6 +69,58 @@ class Article:
     description: str
     source_name: str
     source_url: str
+    source_id: str = ""
+    source_type: SourceType = "rss"
+
+
+@dataclass(frozen=True)
+class SourceConfig:
+    id: str
+    name: str
+    type: SourceType
+    url: str
+    enabled: bool = True
+    tags: list[str] | None = None
+    priority: SourcePriority = "normal"
+    created_at: str = ""
+    updated_at: str = ""
+
+
+@dataclass(frozen=True)
+class SourceRunStat:
+    run_id: str
+    source_id: str
+    source_name: str
+    source_type: SourceType
+    enabled: bool
+    fetched_count: int
+    candidate_count: int
+    selected_count: int
+    status: SourceRunStatus
+    error_type: str | None
+    error_message: str | None
+    started_at: str
+    finished_at: str
+    duration_ms: int
+
+
+@dataclass(frozen=True)
+class RelevanceProfile:
+    interested_topics: list[str]
+    muted_topics: list[str]
+    preferred_content_types: list[ContentType]
+    language: Literal["zh", "en", "mixed"] = "mixed"
+
+
+@dataclass(frozen=True)
+class QualitySummary:
+    sources_scanned: int
+    articles_fetched: int
+    candidates_after_filtering: int
+    selected_count: int
+    top_matched_topics: list[tuple[str, int]]
+    noisy_sources: list[str]
+    failed_sources: list[str]
 
 
 @dataclass(frozen=True)
@@ -78,6 +144,12 @@ class ScoredArticle:
     title_zh: str
     summary: str
     reason: str
+    source_id: str = ""
+    source_type: SourceType = "rss"
+    matched_topics: list[str] | None = None
+    content_type: ContentType = "engineering_blog"
+    relevance_score: int = 0
+    item_id: str = ""
 
     @property
     def total_score(self) -> int:
@@ -95,6 +167,7 @@ class FetchStats:
     failed_feeds: int
     total_articles: int
     failures: dict[str, str]
+    source_stats: list[SourceRunStat]
 
 
 @dataclass(frozen=True)
@@ -113,6 +186,8 @@ class DigestRunResult:
     articles: list[ScoredArticle]
     highlights: str
     fetch_failures: dict[str, str]
+    source_run_stats: list[SourceRunStat]
+    quality_summary: QualitySummary
 
 
 class DigestAIClient:
@@ -260,12 +335,67 @@ def _extract_response_text(response: object) -> str:
 
 
 def load_default_feed_sources() -> list[FeedSource]:
-    rss_sources = [FeedSource(name=name, xml_url=xml_url) for name, xml_url in DEFAULT_RSS_FEEDS]
+    rss_sources = [
+        FeedSource(name=name, xml_url=xml_url, id=_stable_source_id(xml_url), display_type="rss")
+        for name, xml_url in DEFAULT_RSS_FEEDS
+    ]
     blog_sources = [
-        FeedSource(name=name, xml_url=xml_url, source_type=source_type)
+        FeedSource(
+            name=name,
+            xml_url=xml_url,
+            source_type=source_type,
+            id=_stable_source_id(xml_url),
+            display_type="blog",
+        )
         for name, xml_url, source_type in DEFAULT_BLOG_SOURCES
     ]
     return rss_sources + blog_sources
+
+
+def default_source_configs(now: datetime | None = None) -> list[SourceConfig]:
+    timestamp = (now or datetime.now(timezone.utc)).isoformat()
+    configs: list[SourceConfig] = []
+    for source in load_default_feed_sources():
+        configs.append(
+            SourceConfig(
+                id=source.id or _stable_source_id(source.xml_url),
+                name=source.name,
+                type=source.display_type,
+                url=source.xml_url,
+                enabled=True,
+                tags=[],
+                priority="normal",
+                created_at=timestamp,
+                updated_at=timestamp,
+            )
+        )
+    return configs
+
+
+def feed_sources_from_configs(configs: list[SourceConfig]) -> list[FeedSource]:
+    default_by_url = {source.xml_url: source for source in load_default_feed_sources()}
+    sources: list[FeedSource] = []
+    for config in configs:
+        if not config.enabled:
+            continue
+        default = default_by_url.get(config.url)
+        source_type = default.source_type if default else "rss"
+        display_type = config.type if config.type in {"rss", "github", "arxiv", "blog", "custom"} else "custom"
+        sources.append(
+            FeedSource(
+                name=config.name,
+                xml_url=config.url,
+                source_type=source_type,
+                id=config.id or _stable_source_id(config.url),
+                display_type=display_type,
+            )
+        )
+    return sources
+
+
+def _stable_source_id(url: str) -> str:
+    digest = hashlib.sha1(url.encode("utf-8")).hexdigest()[:12]
+    return f"src-{digest}"
 
 
 def _local_name(tag: str) -> str:
@@ -364,6 +494,8 @@ def parse_feed_items(xml_text: str, source_name: str, source_url: str) -> list[A
                     description=_strip_html(description) or title or link,
                     source_name=source_name,
                     source_url=source_url,
+                    source_id=_stable_source_id(source_url),
+                    source_type="rss",
                 )
             )
 
@@ -386,6 +518,8 @@ def parse_feed_items(xml_text: str, source_name: str, source_url: str) -> list[A
                     description=_strip_html(description) or title or link,
                     source_name=source_name,
                     source_url=source_url,
+                    source_id=_stable_source_id(source_url),
+                    source_type="rss",
                 )
             )
 
@@ -395,10 +529,87 @@ def parse_feed_items(xml_text: str, source_name: str, source_url: str) -> list[A
 def _dedupe_articles(items: Iterable[Article]) -> list[Article]:
     dedup: dict[str, Article] = {}
     for item in items:
-        current = dedup.get(item.link)
+        key = _article_dedupe_key(item)
+        current = dedup.get(key)
         if current is None or item.pub_date > current.pub_date:
-            dedup[item.link] = item
+            dedup[key] = item
     return sorted(dedup.values(), key=lambda it: it.pub_date, reverse=True)
+
+
+def _article_dedupe_key(item: Article) -> str:
+    title_key = _clean_text(item.title).casefold()
+    if title_key:
+        return f"title:{title_key}"
+    return f"link:{item.link.strip()}"
+
+
+def default_relevance_profile(lang: Literal["zh", "en"] = "zh") -> RelevanceProfile:
+    return RelevanceProfile(
+        interested_topics=[],
+        muted_topics=[],
+        preferred_content_types=[
+            "engineering_blog",
+            "research_paper",
+            "open_source_release",
+            "product_update",
+            "opinion",
+        ],
+        language=lang,
+    )
+
+
+def _topic_matches(text: str, topics: list[str]) -> list[str]:
+    lower = text.casefold()
+    matches: list[str] = []
+    for topic in topics:
+        cleaned = _clean_text(topic)
+        if cleaned and cleaned.casefold() in lower:
+            matches.append(cleaned)
+    return matches
+
+
+def infer_content_type(article: Article) -> ContentType:
+    text = f"{article.title} {article.description} {article.link}".casefold()
+    if any(token in text for token in ["arxiv", "paper", "research", "study", "benchmark"]):
+        return "research_paper"
+    if any(token in text for token in ["github", "release", "v0.", "v1.", "open source", "oss"]):
+        return "open_source_release"
+    if any(token in text for token in ["launch", "announcing", "introducing", "product", "preview"]):
+        return "product_update"
+    if any(token in text for token in ["funding", "raises", "series a", "series b", "acquired"]):
+        return "funding_news"
+    if any(token in text for token in ["opinion", "essay", "thoughts", "why i", "观点"]):
+        return "opinion"
+    return "engineering_blog"
+
+
+def apply_relevance_profile(articles: list[Article], profile: RelevanceProfile | None) -> list[Article]:
+    if profile is None or not profile.muted_topics:
+        return articles
+    filtered: list[Article] = []
+    for article in articles:
+        text = f"{article.title} {article.description}"
+        if _topic_matches(text, profile.muted_topics):
+            continue
+        filtered.append(article)
+    return filtered
+
+
+def _profile_prompt(profile: RelevanceProfile | None) -> str:
+    if profile is None:
+        return ""
+    parts: list[str] = []
+    if profile.interested_topics:
+        parts.append("优先关注主题: " + ", ".join(profile.interested_topics))
+    if profile.muted_topics:
+        parts.append("降低或过滤主题: " + ", ".join(profile.muted_topics))
+    if profile.preferred_content_types:
+        parts.append("偏好内容类型: " + ", ".join(profile.preferred_content_types))
+    if profile.language:
+        parts.append(f"语言偏好: {profile.language}")
+    if not parts:
+        return ""
+    return "用户相关性画像:\n" + "\n".join(f"- {part}" for part in parts) + "\n\n"
 
 
 def _build_blog_client(source: FeedSource, timeout_s: int):
@@ -469,6 +680,8 @@ def _fetch_blog_source(
                 description=description,
                 source_name=source.name,
                 source_url=source.xml_url,
+                source_id=source.id or _stable_source_id(source.xml_url),
+                source_type=source.display_type,
             )
         )
     return _dedupe_articles(articles)
@@ -484,7 +697,14 @@ def _fetch_feed(source: FeedSource, timeout_s: int, *, since: datetime | None = 
     }
     resp = requests.get(source.xml_url, headers=headers, timeout=timeout_s)
     resp.raise_for_status()
-    return parse_feed_items(resp.text, source_name=source.name, source_url=source.xml_url)
+    return [
+        replace(
+            item,
+            source_id=source.id or _stable_source_id(source.xml_url),
+            source_type=source.display_type,
+        )
+        for item in parse_feed_items(resp.text, source_name=source.name, source_url=source.xml_url)
+    ]
 
 
 def fetch_all_feeds(
@@ -496,16 +716,17 @@ def fetch_all_feeds(
 ) -> tuple[list[Article], FetchStats]:
     all_articles: list[Article] = []
     failures: dict[str, str] = {}
+    source_stats: list[SourceRunStat] = []
     success_feeds = 0
     processed = 0
 
     with ThreadPoolExecutor(max_workers=max(1, concurrency)) as executor:
         futures = {
-            executor.submit(_fetch_feed, feed, timeout_s, since=since): feed for feed in feeds
+            executor.submit(_fetch_feed, feed, timeout_s, since=since): (feed, datetime.now(timezone.utc)) for feed in feeds
         }
         total = len(futures)
         for future in as_completed(futures):
-            feed = futures[future]
+            feed, started = futures[future]
             processed += 1
             try:
                 items = future.result()
@@ -520,6 +741,27 @@ def fetch_all_feeds(
                 all_articles.extend(items)
             else:
                 failures.setdefault(feed.name, failures.get(feed.name, "empty feed"))
+
+            finished = datetime.now(timezone.utc)
+            failed_reason = failures.get(feed.name)
+            source_stats.append(
+                SourceRunStat(
+                    run_id="",
+                    source_id=feed.id or _stable_source_id(feed.xml_url),
+                    source_name=feed.name,
+                    source_type=feed.display_type,
+                    enabled=True,
+                    fetched_count=len(items),
+                    candidate_count=0,
+                    selected_count=0,
+                    status="failed" if failed_reason else "success",
+                    error_type="feed_fetch_failed" if failed_reason else None,
+                    error_message=failed_reason,
+                    started_at=started.isoformat(),
+                    finished_at=finished.isoformat(),
+                    duration_ms=max(0, int((finished - started).total_seconds() * 1000)),
+                )
+            )
 
             logger.info(
                 "[digest] Progress: %s/%s feeds processed (%s ok, %s failed)",
@@ -536,6 +778,7 @@ def fetch_all_feeds(
         failed_feeds=len(feeds) - success_feeds,
         total_articles=len(deduped),
         failures=failures,
+        source_stats=source_stats,
     )
     return deduped, stats
 
@@ -592,7 +835,7 @@ def _call_with_retry(ai_client: DigestAIClient, prompt: str, *, retries: int) ->
     raise RuntimeError("unknown AI call error")
 
 
-def build_scoring_prompt(batch: list[tuple[int, Article]]) -> str:
+def build_scoring_prompt(batch: list[tuple[int, Article]], profile: RelevanceProfile | None = None) -> str:
     blocks = []
     for idx, article in batch:
         blocks.append(
@@ -603,12 +846,14 @@ def build_scoring_prompt(batch: list[tuple[int, Article]]) -> str:
     article_text = "\n\n---\n\n".join(blocks)
     return (
         "你是技术内容编辑，正在为每日技术摘要筛选文章。\n\n"
+        f"{_profile_prompt(profile)}"
         "请对每篇文章给出：\n"
         "1) relevance: 对技术从业者的价值（1-10）\n"
         "2) quality: 内容质量与深度（1-10）\n"
         "3) timeliness: 时效性（1-10）\n"
         "4) category: 必须是 ai-ml/security/engineering/tools/opinion/other 之一\n"
-        "5) keywords: 2-4 个关键词\n\n"
+        "5) keywords: 2-4 个关键词\n"
+        "6) contentType: 必须是 engineering_blog/research_paper/open_source_release/product_update/funding_news/opinion 之一\n\n"
         "文章列表：\n"
         f"{article_text}\n\n"
         "仅返回 JSON，格式如下：\n"
@@ -620,7 +865,8 @@ def build_scoring_prompt(batch: list[tuple[int, Article]]) -> str:
         "      \"quality\": 7,\n"
         "      \"timeliness\": 9,\n"
         "      \"category\": \"engineering\",\n"
-        "      \"keywords\": [\"rust\", \"compiler\", \"performance\"]\n"
+        "      \"keywords\": [\"rust\", \"compiler\", \"performance\"],\n"
+        "      \"contentType\": \"engineering_blog\"\n"
         "    }\n"
         "  ]\n"
         "}"
@@ -633,15 +879,16 @@ def score_articles_with_ai(
     *,
     batch_size: int = 10,
     retries: int = 1,
-) -> dict[int, tuple[ScoreBreakdown, CategoryId, list[str]]]:
-    result: dict[int, tuple[ScoreBreakdown, CategoryId, list[str]]] = {}
+    profile: RelevanceProfile | None = None,
+) -> dict[int, tuple[ScoreBreakdown, CategoryId, list[str], ContentType]]:
+    result: dict[int, tuple[ScoreBreakdown, CategoryId, list[str], ContentType]] = {}
     indexed = list(enumerate(articles))
     batches = _chunked(indexed, batch_size)
     logger.info("[digest] AI scoring: %s articles in %s batches", len(articles), len(batches))
 
     for batch_index, batch in enumerate(batches, start=1):
         try:
-            prompt = build_scoring_prompt(batch)
+            prompt = build_scoring_prompt(batch, profile)
             payload = parse_json_response(_call_with_retry(ai_client, prompt, retries=retries))
             rows = payload.get("results") if isinstance(payload, dict) else None
             if not isinstance(rows, list):
@@ -670,6 +917,20 @@ def score_articles_with_ai(
                         text = _clean_text(str(item))
                         if text:
                             keywords.append(text)
+                content_type_raw = str(row.get("contentType", "")).strip()
+                content_type: ContentType = (
+                    content_type_raw
+                    if content_type_raw
+                    in {
+                        "engineering_blog",
+                        "research_paper",
+                        "open_source_release",
+                        "product_update",
+                        "funding_news",
+                        "opinion",
+                    }
+                    else infer_content_type(articles[idx])
+                )  # type: ignore[assignment]
 
                 result[idx] = (
                     ScoreBreakdown(
@@ -679,6 +940,7 @@ def score_articles_with_ai(
                     ),
                     category,
                     keywords,
+                    content_type,
                 )
 
         except Exception as exc:
@@ -686,14 +948,18 @@ def score_articles_with_ai(
 
         for idx, _article in batch:
             if idx not in result:
-                result[idx] = (ScoreBreakdown(5, 5, 5), "other", [])
+                result[idx] = (ScoreBreakdown(5, 5, 5), "other", [], infer_content_type(_article))
 
         logger.info("[digest] Scoring progress: %s/%s batches", batch_index, len(batches))
 
     return result
 
 
-def build_summary_prompt(batch: list[tuple[int, Article]], lang: Literal["zh", "en"]) -> str:
+def build_summary_prompt(
+    batch: list[tuple[int, Article]],
+    lang: Literal["zh", "en"],
+    profile: RelevanceProfile | None = None,
+) -> str:
     blocks = []
     for idx, article in batch:
         blocks.append(
@@ -713,6 +979,7 @@ def build_summary_prompt(batch: list[tuple[int, Article]], lang: Literal["zh", "
         "2) summary: 4-6 句结构化摘要，覆盖核心问题、关键观点、结论\n"
         "3) reason: 1 句推荐理由，强调为什么值得读\n\n"
         f"{lang_instruction}\n\n"
+        f"{_profile_prompt(profile)}"
         "文章列表：\n"
         f"{article_text}\n\n"
         "仅返回 JSON：\n"
@@ -736,6 +1003,7 @@ def summarize_articles(
     lang: Literal["zh", "en"] = "zh",
     batch_size: int = 10,
     retries: int = 1,
+    profile: RelevanceProfile | None = None,
 ) -> dict[int, tuple[str, str, str]]:
     result: dict[int, tuple[str, str, str]] = {}
     indexed = list(enumerate(articles))
@@ -744,7 +1012,7 @@ def summarize_articles(
 
     for batch_index, batch in enumerate(batches, start=1):
         try:
-            prompt = build_summary_prompt(batch, lang)
+            prompt = build_summary_prompt(batch, lang, profile)
             payload = parse_json_response(_call_with_retry(ai_client, prompt, retries=retries))
             rows = payload.get("results") if isinstance(payload, dict) else None
             if not isinstance(rows, list):
@@ -893,12 +1161,89 @@ def generate_tag_cloud(articles: list[ScoredArticle]) -> str:
     return " · ".join(words)
 
 
-def generate_digest_report(articles: list[ScoredArticle], highlights: str, stats: DigestStats) -> str:
+def build_quality_summary(
+    articles: list[ScoredArticle],
+    stats: DigestStats,
+    source_stats: list[SourceRunStat] | None = None,
+) -> QualitySummary:
+    source_stats = source_stats or []
+    noisy_sources = [
+        stat.source_name
+        for stat in source_stats
+        if stat.fetched_count >= 20 and stat.selected_count == 0
+    ]
+    failed_sources = [
+        stat.source_name
+        for stat in source_stats
+        if stat.status in {"failed", "partial"} or stat.error_message
+    ]
+    return QualitySummary(
+        sources_scanned=stats.total_feeds,
+        articles_fetched=stats.total_articles,
+        candidates_after_filtering=stats.filtered_articles,
+        selected_count=len(articles),
+        top_matched_topics=_top_keywords(articles, 8),
+        noisy_sources=noisy_sources,
+        failed_sources=failed_sources,
+    )
+
+
+def finalize_source_stats(
+    source_stats: list[SourceRunStat],
+    selected_articles: list[ScoredArticle],
+    candidate_articles: list[Article],
+    run_id: str,
+) -> list[SourceRunStat]:
+    candidate_counts: dict[str, int] = {}
+    selected_counts: dict[str, int] = {}
+    for article in candidate_articles:
+        key = article.source_id or _stable_source_id(article.source_url)
+        candidate_counts[key] = candidate_counts.get(key, 0) + 1
+    for article in selected_articles:
+        key = article.source_id or _stable_source_id(article.source_url)
+        selected_counts[key] = selected_counts.get(key, 0) + 1
+
+    updated: list[SourceRunStat] = []
+    for stat in source_stats:
+        updated.append(
+            replace(
+                stat,
+                run_id=run_id,
+                candidate_count=candidate_counts.get(stat.source_id, 0),
+                selected_count=selected_counts.get(stat.source_id, 0),
+            )
+        )
+    return updated
+
+
+def generate_digest_report(
+    articles: list[ScoredArticle],
+    highlights: str,
+    stats: DigestStats,
+    quality_summary: QualitySummary | None = None,
+) -> str:
     now = datetime.now(timezone.utc)
     date_str = now.strftime("%Y-%m-%d")
+    quality_summary = quality_summary or build_quality_summary(articles, stats)
 
     report = f"# 📰 AI 博客每日精选 — {date_str}\n\n"
     report += f"> 基于 {stats.total_feeds} 个技术博客源，AI 精选 Top {len(articles)}\n\n"
+
+    report += "## Quality Summary\n\n"
+    report += "| Sources scanned | Articles fetched | Candidates | Selected |\n"
+    report += "|:---:|:---:|:---:|:---:|\n"
+    report += (
+        f"| {quality_summary.sources_scanned} | {quality_summary.articles_fetched} | "
+        f"{quality_summary.candidates_after_filtering} | {quality_summary.selected_count} |\n\n"
+    )
+    if quality_summary.top_matched_topics:
+        report += "Top matched topics: "
+        report += ", ".join(f"{topic}({count})" for topic, count in quality_summary.top_matched_topics)
+        report += "\n\n"
+    if quality_summary.noisy_sources:
+        report += "Noisy sources: " + ", ".join(quality_summary.noisy_sources) + "\n\n"
+    if quality_summary.failed_sources:
+        report += "Failed sources: " + ", ".join(quality_summary.failed_sources) + "\n\n"
 
     if highlights:
         report += "## 📝 今日看点\n\n"
@@ -917,7 +1262,9 @@ def generate_digest_report(articles: list[ScoredArticle], highlights: str, stats
             )
             report += f"> {article.summary}\n\n"
             if article.reason:
-                report += f"💡 **为什么值得读**: {article.reason}\n\n"
+                report += f"💡 **Why selected**: {article.reason}\n\n"
+            if article.matched_topics:
+                report += f"Matched topics: {', '.join(article.matched_topics)}\n\n"
             if article.keywords:
                 report += f"🏷️ {', '.join(article.keywords)}\n\n"
         report += "---\n\n"
@@ -966,6 +1313,11 @@ def generate_digest_report(articles: list[ScoredArticle], highlights: str, stats
             report += f"> {article.summary}\n\n"
             if article.keywords:
                 report += f"🏷️ {', '.join(article.keywords)}\n\n"
+            if article.reason:
+                report += f"Why selected: {article.reason}\n\n"
+            if article.matched_topics:
+                report += f"Matched topics: {', '.join(article.matched_topics)}\n\n"
+            report += f"Content type: {article.content_type} · Relevance: {article.relevance_score}/30\n\n"
             report += "---\n\n"
 
     report += (
@@ -1000,13 +1352,20 @@ def run_digest(
     ai_retries: int = 1,
     max_ai_articles: int = 120,
     feeds: list[FeedSource] | None = None,
+    source_configs: list[SourceConfig] | None = None,
+    relevance_profile: RelevanceProfile | None = None,
+    run_id: str = "",
 ) -> DigestRunResult:
     if hours <= 0:
         raise ValueError("hours must be > 0")
     if top_n <= 0:
         raise ValueError("top_n must be > 0")
 
-    sources = feeds or load_default_feed_sources()
+    sources = feeds or (
+        feed_sources_from_configs(source_configs)
+        if source_configs is not None
+        else load_default_feed_sources()
+    )
     logger.info("[digest] Step 1/5: Fetching %s digest sources...", len(sources))
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
     all_articles, fetch_stats = fetch_all_feeds(
@@ -1021,6 +1380,7 @@ def run_digest(
 
     logger.info("[digest] Step 2/5: Filtering by time range (%s hours)...", hours)
     recent_articles = [it for it in all_articles if it.pub_date.astimezone(timezone.utc) > cutoff]
+    recent_articles = apply_relevance_profile(recent_articles, relevance_profile)
 
     if not recent_articles:
         raise RuntimeError(f"No articles found within last {hours} hours")
@@ -1046,12 +1406,22 @@ def run_digest(
         ai_client,
         batch_size=ai_batch_size,
         retries=ai_retries,
+        profile=relevance_profile,
     )
 
-    scored_rows: list[tuple[Article, ScoreBreakdown, CategoryId, list[str]]] = []
+    scored_rows: list[tuple[Article, ScoreBreakdown, CategoryId, list[str], ContentType]] = []
     for idx, article in enumerate(recent_articles):
-        breakdown, category, keywords = scoring.get(idx, (ScoreBreakdown(5, 5, 5), "other", []))
-        scored_rows.append((article, breakdown, category, keywords))
+        breakdown, category, keywords, content_type = scoring.get(
+            idx,
+            (ScoreBreakdown(5, 5, 5), "other", [], infer_content_type(article)),
+        )
+        if relevance_profile:
+            matched = _topic_matches(f"{article.title} {article.description}", relevance_profile.interested_topics)
+            muted = _topic_matches(f"{article.title} {article.description}", relevance_profile.muted_topics)
+            preferred = content_type in relevance_profile.preferred_content_types
+            relevance = max(1, min(10, breakdown.relevance + len(matched) * 2 + (2 if preferred else 0) - len(muted) * 4))
+            breakdown = ScoreBreakdown(relevance, breakdown.quality, breakdown.timeliness)
+        scored_rows.append((article, breakdown, category, keywords, content_type))
 
     scored_rows.sort(
         key=lambda row: (
@@ -1070,11 +1440,17 @@ def run_digest(
         lang=lang,
         batch_size=ai_batch_size,
         retries=ai_retries,
+        profile=relevance_profile,
     )
 
     final_articles: list[ScoredArticle] = []
-    for idx, (article, breakdown, category, keywords) in enumerate(top_rows):
+    for idx, (article, breakdown, category, keywords, content_type) in enumerate(top_rows):
         title_zh, summary, reason = summaries.get(idx, (article.title, article.description[:220], ""))
+        matched_topics = _topic_matches(
+            f"{article.title} {article.description} {' '.join(keywords)}",
+            (relevance_profile.interested_topics if relevance_profile else []) + keywords,
+        )
+        item_id = hashlib.sha1(f"{article.link}|{article.title}".encode("utf-8")).hexdigest()[:16]
         final_articles.append(
             ScoredArticle(
                 title=article.title,
@@ -1089,6 +1465,12 @@ def run_digest(
                 title_zh=title_zh or article.title,
                 summary=summary or article.description[:220] or article.title,
                 reason=reason,
+                source_id=article.source_id,
+                source_type=article.source_type,
+                matched_topics=matched_topics[:6],
+                content_type=content_type,
+                relevance_score=breakdown.relevance + breakdown.quality + breakdown.timeliness,
+                item_id=item_id,
             )
         )
 
@@ -1102,8 +1484,10 @@ def run_digest(
         filtered_articles=len(recent_articles),
         hours=hours,
     )
+    source_run_stats = finalize_source_stats(fetch_stats.source_stats, final_articles, recent_articles, run_id)
+    quality_summary = build_quality_summary(final_articles, stats, source_run_stats)
 
-    report = generate_digest_report(final_articles, highlights, stats)
+    report = generate_digest_report(final_articles, highlights, stats, quality_summary)
     out_path = _ensure_output_path(output_path)
     out_path.write_text(report, encoding="utf-8")
 
@@ -1113,4 +1497,6 @@ def run_digest(
         articles=final_articles,
         highlights=highlights,
         fetch_failures=fetch_stats.failures,
+        source_run_stats=source_run_stats,
+        quality_summary=quality_summary,
     )

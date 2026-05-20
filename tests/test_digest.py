@@ -3,16 +3,24 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from signalforge_daily.digest import (
+    Article,
     DigestStats,
     FeedSource,
+    QualitySummary,
+    RelevanceProfile,
     ScoreBreakdown,
     ScoredArticle,
+    _dedupe_articles,
+    apply_relevance_profile,
+    build_scoring_prompt,
+    feed_sources_from_configs,
     _extract_response_text,
     fetch_all_feeds,
     generate_digest_report,
     load_default_feed_sources,
     parse_feed_items,
     parse_json_response,
+    SourceConfig,
 )
 from signalforge_daily.blog_tracker.sources.base import ListedPost
 
@@ -59,6 +67,85 @@ def test_parse_atom_items() -> None:
     assert items[0].description == "Atom body"
 
 
+def test_dedupe_articles_uses_normalized_title_across_sources() -> None:
+    older = Article(
+        title="Same Launch",
+        link="https://source-a.example.com/posts/same-launch",
+        pub_date=datetime(2026, 2, 25, 8, 0, 0, tzinfo=timezone.utc),
+        description="Older duplicate",
+        source_name="source-a",
+        source_url="https://source-a.example.com/rss",
+    )
+    newer = Article(
+        title="  Same   Launch  ",
+        link="https://source-b.example.com/news/same-launch",
+        pub_date=datetime(2026, 2, 25, 9, 0, 0, tzinfo=timezone.utc),
+        description="Newer duplicate",
+        source_name="source-b",
+        source_url="https://source-b.example.com/rss",
+    )
+    distinct = Article(
+        title="Different Launch",
+        link="https://source-c.example.com/news/different-launch",
+        pub_date=datetime(2026, 2, 25, 7, 0, 0, tzinfo=timezone.utc),
+        description="Different article",
+        source_name="source-c",
+        source_url="https://source-c.example.com/rss",
+    )
+
+    items = _dedupe_articles([older, newer, distinct])
+
+    assert len(items) == 2
+    assert items[0].link == "https://source-b.example.com/news/same-launch"
+    assert items[1].link == "https://source-c.example.com/news/different-launch"
+
+
+def test_disabled_source_config_is_not_fetched() -> None:
+    sources = feed_sources_from_configs(
+        [
+            SourceConfig(
+                id="enabled",
+                name="Enabled Source",
+                type="rss",
+                url="https://example.com/enabled.xml",
+                enabled=True,
+            ),
+            SourceConfig(
+                id="disabled",
+                name="Disabled Source",
+                type="rss",
+                url="https://example.com/disabled.xml",
+                enabled=False,
+            ),
+        ]
+    )
+
+    assert [source.name for source in sources] == ["Enabled Source"]
+
+
+def test_relevance_profile_filters_muted_topics_and_enters_prompt() -> None:
+    article = Article(
+        title="Funding news for agent startup",
+        link="https://example.com/funding",
+        pub_date=datetime(2026, 2, 25, 8, 0, 0, tzinfo=timezone.utc),
+        description="Series A funding update",
+        source_name="example",
+        source_url="https://example.com/rss",
+    )
+    profile = RelevanceProfile(
+        interested_topics=["agent"],
+        muted_topics=["funding"],
+        preferred_content_types=["engineering_blog"],
+        language="zh",
+    )
+
+    assert apply_relevance_profile([article], profile) == []
+    prompt = build_scoring_prompt([(0, article)], profile)
+    assert "agent" in prompt
+    assert "funding" in prompt
+    assert "engineering_blog" in prompt
+
+
 def test_generate_digest_report_contains_sections() -> None:
     article = ScoredArticle(
         title="Original",
@@ -73,6 +160,9 @@ def test_generate_digest_report_contains_sections() -> None:
         title_zh="中文标题",
         summary="摘要内容",
         reason="推荐理由",
+        matched_topics=["python"],
+        content_type="engineering_blog",
+        relevance_score=24,
     )
     stats = DigestStats(
         total_feeds=92,
@@ -81,8 +171,20 @@ def test_generate_digest_report_contains_sections() -> None:
         filtered_articles=20,
         hours=24,
     )
-    report = generate_digest_report([article, article, article], "今日看点", stats)
+    quality = QualitySummary(
+        sources_scanned=92,
+        articles_fetched=200,
+        candidates_after_filtering=20,
+        selected_count=3,
+        top_matched_topics=[("python", 3)],
+        noisy_sources=["noisy"],
+        failed_sources=["broken"],
+    )
+    report = generate_digest_report([article, article, article], "今日看点", stats, quality)
     assert "## 🏆 今日必读" in report
+    assert "## Quality Summary" in report
+    assert "Why selected" in report
+    assert "Matched topics" in report
     assert "## 📊 数据概览" in report
     assert "中文标题" in report
 
@@ -162,3 +264,4 @@ def test_fetch_all_feeds_supports_openai_blog_sources(monkeypatch) -> None:
     assert len(articles) == 1
     assert articles[0].title == "Test Post"
     assert articles[0].description == "OpenAI blog body."
+    assert stats.source_stats[0].source_name == "OpenAI Developers Blog"

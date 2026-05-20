@@ -23,7 +23,10 @@ export function RunStatusCard({ run, currentStep, logs = [] }: Props) {
     <details className="panel run-details">
       <summary>
         <span>运行详情</span>
-        <span className={`status ${run.status}`}>{translateStatus(run.status)}</span>
+        <span className="run-summary-meta">
+          <span className={`status ${run.status}`}>{translateStatus(run.status)}</span>
+          <span>{formatDuration(run.durationMs)}</span>
+        </span>
       </summary>
       <div className="details-content">
         <div className="meta-grid">

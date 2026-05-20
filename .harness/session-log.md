@@ -162,5 +162,208 @@
   - `cd app && npm run build`: passed.
   - `cd app && npm run sidecar:build`: passed.
   - `cd app/src-tauri && cargo check`: passed.
+  - `uv run python -m json.tool .harness/session-state.json`: passed.
+  - `bash scripts/harness_check.sh`: skipped because Bash is unavailable in this PowerShell session.
+  - PowerShell equivalent of `scripts/harness_check.sh`: passed, 18 files present.
   - `uv run python -m pytest -q`: passed, 8 tests.
   - `uv run python -m signalforge_daily.digest_cli --help`: passed.
+
+## 2026-05-13 - README Refresh
+- Goal: Update README to match the current SignalForge Daily product and repository state after the desktop app, package rename, warning handling, and Today reading-page redesign.
+- Implementation:
+  - Reframed README around the local-first Tauri desktop app as the primary product surface.
+  - Documented current project layout, desktop app workflow, app workspace data, Python setup, digest CLI, other CLIs, verification commands, and troubleshooting.
+  - Removed stale early-update framing and old path examples.
+- Verification:
+  - `uv run python -m json.tool .harness/session-state.json`: passed.
+  - `bash scripts/harness_check.sh`: skipped because Bash is unavailable in this PowerShell session.
+  - PowerShell equivalent of `scripts/harness_check.sh`: passed.
+  - `rg -n "news_collection|AI News Collection|Generate Today's Digest|/home/deming/work" README.md`: no stale matches.
+
+## 2026-05-14 - First Run Experience v0.1 Polish
+- Goal: Tighten the v0.1 product loop around first-run setup, digest runner entry points, report preview, and recoverable local state without adding Papers, Sources, or Automation.
+- Context restored:
+  - Existing digest CLI entry point remains `signalforge_daily.digest_cli`.
+  - Tauri runner, app config persistence, run records, log capture, report scanning, and Markdown preview already existed.
+  - Previous README/harness edits and `.claude/` local files were present in the dirty worktree and were preserved.
+- Implementation:
+  - Added a frontend config-readiness helper for the minimum first-run boundary: workspace path, output path, API key, and model.
+  - Routed incomplete config back to Setup instead of Today.
+  - Updated setup copy to describe the local workspace, provider configuration, connection test, and first digest flow.
+  - In setup mode, entering Today now requires complete required fields and a successful connection test.
+  - Updated Today so report actions route to built-in Reports preview first, with default-app open still available.
+  - Updated Markdown preview links so source URLs open through the desktop bridge instead of navigating inside the webview.
+  - Removed misleading "auto generation" wording from the Today settings action.
+  - Recorded the readiness decision in `docs/decisions.md`.
+- Verification:
+  - Temporary config readiness behavior test via `tsc` + `node --test`: passed, 3 tests.
+  - `cd app && npm run build`: passed.
+  - `cd app && npm run sidecar:build`: passed.
+  - `cd app/src-tauri && cargo check`: passed.
+  - `uv run python -m pytest -q`: passed, 8 tests.
+  - `uv run python -m signalforge_daily.digest_cli --help`: passed.
+  - `uv run python -m json.tool .harness/session-state.json`: passed.
+  - `bash scripts/harness_check.sh`: skipped because Bash is unavailable in this PowerShell session.
+  - PowerShell equivalent of `scripts/harness_check.sh`: passed, 18 files present.
+- Notes:
+  - Live provider Test Connection and real digest generation were not run because no API key was supplied for this session.
+  - Browser/IAB rendered smoke check was attempted twice against `http://127.0.0.1:5173`, but the Browser runtime timed out and reset before returning DOM or screenshot evidence.
+  - `npm` continues to warn about unknown `electron-mirror` env config; builds are unaffected.
+
+## 2026-05-18 - RSS Title Deduplication
+- Goal: Remove duplicate digest articles that appear from different RSS sources under the same title.
+- Context restored:
+  - Existing digest dedupe lived in `src/signalforge_daily/digest.py` as `_dedupe_articles`.
+  - The helper deduplicated by `link` only and was used both after parsing a feed and after aggregating all feeds.
+  - Existing README, harness, app first-run polish changes, and `.claude/` local files were already present in the dirty worktree and were preserved.
+- Implementation:
+  - Added a regression test for two articles with the same normalized title but different links and sources.
+  - Added `_article_dedupe_key` so title is the primary dedupe identity and link is the fallback when title is empty.
+  - Kept the newest article when duplicate keys collide.
+  - Left feed fetching, filtering, AI scoring, summaries, and report rendering unchanged.
+  - Recorded the title-deduplication tradeoff in `docs/decisions.md`.
+- Verification:
+  - `uv run python -m pytest -q tests/test_digest.py::test_dedupe_articles_uses_normalized_title_across_sources`: failed before implementation, then passed.
+  - `uv run python -m pytest -q tests/test_digest.py`: passed, 9 tests.
+  - `uv run python -m pytest -q`: passed, 9 tests.
+  - `uv run python -m signalforge_daily.digest_cli --help`: passed.
+  - `uv run python -m json.tool .harness/session-state.json`: passed.
+  - `bash scripts/harness_check.sh`: skipped because Bash is unavailable in this PowerShell session.
+  - PowerShell equivalent of `scripts/harness_check.sh`: passed, 18 files present.
+- Notes:
+  - No live digest run was performed; this behavior is covered with deterministic unit tests.
+  - Exact normalized-title dedupe may merge distinct articles with identical titles; this is the requested simple rule for v0.1.
+
+## 2026-05-18 - v0.2 Source Quality and Trust
+- Goal: Add source control, source health, relevance profile tuning, report trust metadata, and lightweight local feedback without adding schedulers, tray, cloud sync, teams, complex search, or paper mode.
+- Context restored:
+  - v0.1 desktop loop and RSS title deduplication were already implemented.
+  - Existing README, harness, app first-run polish, and `.claude/` local files were present in the dirty worktree and were preserved.
+- Implementation:
+  - Added Python digest data contracts for `SourceConfig`, `SourceRunStat`, `RelevanceProfile`, `QualitySummary`, and extended scored digest items with matched topics, content type, relevance score, and item id.
+  - Added source config loading and relevance profile loading to `signalforge_daily.digest_cli` via JSON files.
+  - Disabled sources are excluded before fetching.
+  - Per-source fetched/candidate/selected/status/error/duration stats are emitted by the CLI as camelCase JSON.
+  - Relevance profile context is injected into scoring and summary prompts; muted topics are filtered before scoring and preferred content types/topic matches adjust relevance.
+  - Reports now include a Quality Summary plus `Why selected`, matched topics, content type, source, and original URL metadata.
+  - Tauri config now persists `sources` and `relevanceProfile`, hydrates default sources from `digest_feeds.py`, passes source/profile JSON to the sidecar, reads source stats back, and persists source stats plus item feedback under workspace metadata.
+  - Added `Sources` navigation/page with enable/disable, last status, fetched/selected counts, recent failure count, noisy-source hint, and failed-source hint.
+  - Added Relevance Profile controls to Settings and Useful / Not useful / Hide similar feedback buttons on Today top picks.
+  - Recorded the local v0.2 data decision in `docs/decisions.md`.
+- Verification:
+  - `uv run python -m pytest -q tests/test_digest.py`: passed, 11 tests.
+  - `uv run python -m pytest -q`: passed, 11 tests.
+  - `uv run python -m signalforge_daily.digest_cli --help`: passed.
+  - `cd app && npm run build`: passed.
+  - `cd app && npm run sidecar:build`: passed.
+  - `cd app/src-tauri && cargo check`: passed.
+- Notes:
+  - Live digest smoke with real API credentials and network was not run in this session.
+  - Source quality stats are collected from the CLI output JSON during desktop runs; existing historical runs will not have v0.2 stats.
+  - The noisy-source threshold starts simple: fetched count at least 20 with zero selected in the latest run.
+
+## 2026-05-18 - v0.2.5 UI/UX Polish
+- Goal: Polish the current SignalForge Daily desktop UI without adding automation, tray, notifications, research mode, paper collection, cloud sync, accounts, or digest algorithm changes.
+- Context restored:
+  - v0.1 and v0.2 features were already present in the dirty worktree.
+  - Existing user/project changes in README, Tauri, Python digest, tests, and untracked local files were preserved.
+- Implementation:
+  - Added shared UI primitives in `app/src/components/ui.tsx` for page headers, status badges, empty states, loading states, and error states.
+  - Lightened AppShell sidebar sizing, navigation density, and brand area; hid the unfinished favorite nav item.
+  - Reworked Today hierarchy around a compact header, hero summary, reading-first Top Picks, lighter feedback chips, concise report actions, lighter source warnings, folded generation settings, and folded run details with duration.
+  - Reworked Sources into overview metrics, suggestions, and compact source cards showing name, URL, badges, last fetch, fetched/selected counts, selected rate, recent failures, and lightweight enable/disable actions.
+  - Reworked Reports copy and preview actions to Chinese labels and improved the two-column reading surface with a constrained Markdown width.
+  - Reordered Settings so workspace, AI provider, and relevance profile are prominent, while Network and Advanced are collapsed by default.
+  - Centralized design tokens and button/card/badge styling in `app/src/styles.css`.
+- Verification:
+  - `cd app && npm run build`: passed.
+- Notes:
+  - Browser visual QA was not run because no Browser MCP tool was exposed after tool discovery in this turn; earlier sessions also recorded Browser/IAB timeouts.
+  - Real digest generation and live provider testing were not run because this was a renderer-only UI polish pass and credentials/network are user-local.
+
+## 2026-05-18 - v0.3 Automation and Habit
+- Goal: Upgrade SignalForge Daily from manual-only daily digest generation to local scheduled generation with notifications, tray actions, and visible automation status.
+- Context restored:
+  - v0.1 First Run/Digest Runner/Reports/Error Recovery, v0.2 Source Quality & Trust/Relevance Profile/Feedback, and v0.2.5 UI polish were already present in the dirty worktree.
+  - Existing unrelated dirty files and local `.claude/` files were preserved.
+- Implementation:
+  - Added `AutomationConfig` to AppConfig with defaults for disabled daily 08:30 runs, success/failure notifications, missed-startup catchup, and skip-if-generated-today.
+  - Added `RunTrigger` / `RunRecord.trigger` with `manual`, `scheduled`, and `startup_missed`; older run JSON defaults to `manual`.
+  - Refactored Tauri digest launch into a shared `start_digest` helper so manual, scheduled, startup-missed, and tray-triggered runs reuse the same runner path and active-run lock.
+  - Added a Tauri scheduler thread that calculates local due time, honors daily/weekdays, skips if today already has a successful digest, performs startup-missed runs once per day, and records skip reasons in local metadata.
+  - Added Tauri notification plugin dependency and renderer notification service for permission checks, test notification, success/failure notifications, and Today navigation on notification actions.
+  - Added Tauri tray menu with Chinese actions: open app, generate today's digest, open reports, view sources, pause/resume automation, and quit.
+  - Added Settings automation controls and Today lightweight automation status card.
+  - Added notification permission capability and package/Cargo lock updates.
+- Verification:
+  - `cd app && npm install`: passed.
+  - `cd app && npm run build`: passed.
+  - `cd app && npm run sidecar:build`: passed.
+  - `cd app/src-tauri && cargo check`: failed once because Tauri tray API requires the `tray-icon` feature; passed after enabling it.
+- Notes:
+  - Live scheduled digest generation was not run because it requires user-local API credentials and waiting for a real schedule time.
+  - System notification and tray click behavior still need runtime smoke testing in the Tauri shell.
+  - Scheduler runs only while the desktop app process is running; OS login-start integration is intentionally not included in v0.3.
+
+## 2026-05-20 - Sources Add Source Action
+- Goal: Add a top-right "新增信息源" action to the Sources page.
+- Context restored:
+  - v0.3 Automation & Habit was already recorded as completed.
+  - The Sources page already persisted source enable/disable through `AppConfig.sources` and `saveConfig`.
+- Implementation:
+  - Added a `新增信息源` PageHeader action on Sources.
+  - Added an inline add-source panel with fields for name, type, URL, tags, and priority.
+  - New sources default to enabled, normal priority, and are inserted at the top of the source list.
+  - Added syntactic URL validation and duplicate URL protection before saving.
+  - Styled the add-source panel to fit the v0.2.5 compact Sources layout.
+- Verification:
+  - `cd app && npm run build`: passed.
+- Notes:
+  - Runtime Tauri UI smoke testing was not run in this turn.
+  - Added source reachability is checked by the next digest run, not at add time.
+
+## 2026-05-20 - Automation Scheduler Bugfix
+- Goal: Fix P2 blockers found during the guarded commit-main review gate for v0.3 automation.
+- Context restored:
+  - `commit-main` review found that automatic missing-API-key failures returned before a `RunRecord` was created.
+  - The same review found that `startup_missed` did not mark `last_scheduled_date`, allowing a same-day scheduled run to follow the startup catch-up path.
+- Implementation:
+  - Added Rust regression tests for preflight failure run records and startup-missed scheduled-slot consumption.
+  - Extracted shared initial digest run record construction in `app/src-tauri/src/lib.rs`.
+  - Changed missing API key preflight failures to create and save a failed run, emit `DigestEvent::Failed`, and send automation failure notifications when applicable.
+  - Changed startup-missed scheduler handling to mark both `last_startup_missed_date` and `last_scheduled_date` for runs and skips.
+  - Added a startup-missed active-run skip path that records a local skip reason instead of trying to start a concurrent digest.
+- Verification:
+  - `cd app/src-tauri && cargo test preflight_failure_run_record_is_failed_with_trigger_and_error`: failed before implementation because the helper did not exist, then passed.
+  - `cd app/src-tauri && cargo test startup_missed_consumes_scheduled_slot_for_same_day`: passed after implementation.
+  - `cd app/src-tauri && cargo test`: passed, 2 tests.
+  - `cd app/src-tauri && cargo check`: passed.
+  - `cd app && npm run build`: passed.
+  - `uv run python -m pytest -q`: passed, 11 tests.
+  - `cd app && npm run sidecar:build`: passed.
+  - `uv run python -m json.tool .harness/session-state.json`: passed.
+  - `bash scripts/harness_check.sh`: skipped because Bash is unavailable in this PowerShell session.
+  - PowerShell equivalent of `scripts/harness_check.sh`: passed, 18 files present.
+- Notes:
+  - Live scheduled digest execution was not run because it requires local credentials and schedule timing.
+  - Runtime notification and tray click behavior still need a Tauri shell smoke test.
+
+## 2026-05-20 - Commit Main Review Gate
+- Goal: Review, verify, commit, and push the accumulated SignalForge Daily v0.1-v0.3 work to `master`.
+- Review:
+  - Inspected the full tracked diff and relevant untracked project files.
+  - Treated `.claude/settings.local.json` as local tool state and left it untracked.
+  - No P1/P2 findings remained after the automation scheduler bugfix.
+  - Non-blocking note: notification body-click behavior still needs runtime Tauri smoke testing across target platforms.
+- Verification:
+  - `git diff --check`: passed.
+  - `cd app/src-tauri && cargo test`: passed, 2 tests.
+  - `cd app/src-tauri && cargo check`: passed.
+  - `cd app && npm run build`: passed.
+  - `uv run python -m pytest -q`: passed, 11 tests.
+  - `cd app && npm run sidecar:build`: passed.
+  - `uv run python -m json.tool .harness/session-state.json`: passed.
+  - PowerShell equivalent of `scripts/harness_check.sh`: passed, 18 files present.
+- Notes:
+  - `bash scripts/harness_check.sh` was not run because Bash is unavailable in this PowerShell session.
+  - Live digest, notification click, tray click, and scheduled-run smoke tests still require a Tauri runtime session and local credentials.

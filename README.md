@@ -1,74 +1,43 @@
-# SignalForge Daily (LangGraph)
+# SignalForge Daily
 
-Collect topic-related content with LangGraph. Currently implements paper collection via arXiv.
-Uses a two-step LLM plan-and-select flow with sequential tool execution and PDF evidence.
+SignalForge Daily is a local-first technical digest tool for AI, agents, coding, EDA, and adjacent engineering signals. It combines a Tauri desktop app with the existing Python collection and digest CLIs.
 
-## Latest Updates (2026-02-25)
+The desktop app is the primary product surface: configure a local workspace and an OpenAI-compatible API key, generate a daily digest, read Chinese-first Top Picks, inspect source warnings, and open historical Markdown reports.
 
-- Added Python AI daily digest pipeline (`signalforge_daily.digest_cli`) aligned with the `ai-daily-digest` skill.
-- Added built-in RSS source list (`92` feeds) and report generation with:
-  - Top 3 picks
-  - Category grouping
-  - Mermaid charts
-  - ASCII keyword chart
-  - Tag cloud
-- Added resilient AI response parsing for iFlow/OpenAI-compatible responses.
-- Added digest unit tests under `tests/test_digest.py`.
+## What It Does
 
-## Setup
+- Generates AI-assisted technical digests from built-in RSS and blog sources.
+- Presents Today as a Chinese-first reading page with summary stats, Top Picks, recommendation reasons, and collapsed run details.
+- Treats partial feed failures as warnings when a usable report was generated.
+- Stores app data locally in the workspace you choose.
+- Keeps Python CLIs available for digest generation, paper collection, blog tracking, and graph visualization.
 
-Python requirement: `>=3.10` (recommended: use `uv`).
+## Project Layout
 
-### Option A (Recommended): uv
-
-1) Sync environment:
-
-```bash
-uv sync
+```text
+app/                         Tauri + React + TypeScript desktop app
+app/src/                     React renderer pages and components
+app/src-tauri/               Rust shell, commands, persistence, sidecar runner
+app/src-tauri/sidecar/       digest-sidecar launcher for the Python CLI
+src/signalforge_daily/       Python package and business logic
+tests/                       pytest coverage for digest behavior
+docs/                        architecture, verification, decisions, error journal
+.harness/                    durable session state and log
 ```
 
-2) Set API key:
+Generated outputs stay local and are not source files: `paper/`, `blog/`, `output/`, `logs/`, app workspace `runs/`, app workspace `reports/`, and app workspace `logs/`.
 
-```bash
-export IFLOW_API_KEY=your_key
-```
+## Requirements
 
-3) Run commands with `uv run`:
+- Python `>=3.10`
+- `uv` for Python environment management
+- Node.js and npm for the desktop renderer
+- Rust and the Windows C++ build tools for Tauri shell checks/builds
+- An iFlow/OpenAI-compatible API key for live digest generation
 
-```bash
-uv run python -m signalforge_daily.digest_cli --hours 24 --top-n 15 --lang zh
-```
+## Desktop App
 
-### Option B: pip
-
-1) Install dependencies:
-
-```bash
-pip install -r requirements.txt
-pip install -e .
-```
-
-2) Set API key:
-
-```bash
-export IFLOW_API_KEY=your_key
-```
-
-3) (Optional) Enable Langfuse:
-
-```bash
-export LANGFUSE_PUBLIC_KEY=your_public_key
-export LANGFUSE_SECRET_KEY=your_secret_key
-export LANGFUSE_HOST=https://cloud.langfuse.com
-```
-
-## Usage
-
-## Desktop App v0.1
-
-The local-first desktop app lives under `app/`. It uses Tauri + React + TypeScript with a Rust shell and a digest sidecar launcher. The sidecar wraps the existing Python digest CLI instead of replacing it.
-
-Install and run:
+Install dependencies and run the local app:
 
 ```bash
 cd app
@@ -76,28 +45,14 @@ npm install
 npm run app:dev
 ```
 
-Build the renderer only:
+In the app:
 
-```bash
-cd app
-npm run build
-```
+1. Choose a local workspace folder.
+2. Configure the API key, model, base URL, and proxy settings.
+3. Pick digest defaults such as language and time range.
+4. Click `生成今日摘要` on Today.
 
-Build the sidecar launcher only:
-
-```bash
-cd app
-npm run sidecar:build
-```
-
-Build the Tauri app:
-
-```bash
-cd app
-npm run tauri:build
-```
-
-In the app, choose a workspace folder, enter the iFlow/OpenAI-compatible API key, pick language/time range defaults, then click `Generate Today's Digest` on the Today page. App data is stored in the selected workspace:
+The selected workspace contains:
 
 ```text
 app-config.json
@@ -106,56 +61,58 @@ logs/
 reports/
 ```
 
-The v0.1 sidecar launcher calls:
+The v0.1 sidecar launcher delegates to:
 
 ```bash
 uv run python -m signalforge_daily.digest_cli
 ```
 
-Reports are written to the configured `reports/` folder and can be previewed from the Reports page.
-
-Run a paper collection:
+Useful app commands:
 
 ```bash
-python -m signalforge_daily.cli \
-  --topic "RTL 代码生成 且使用cvdp数据集或RealBench数据集" \
-  --requirements "使用cvdp数据集或RealBench数据集" \
-  --content-type paper \
-  --start "2025-09-01" \
-  --end "2026-01-15" \
-  --tz "Asia/Shanghai" \
-  --iflow-model "qwen3-max" \
-  --max-results 5 \
-  --pdf-max-chars 16000
+cd app
+npm run build
+npm run sidecar:build
+npm run tauri:build
 ```
 
-You can also run via a config file:
+## Python Setup
+
+Recommended:
 
 ```bash
-python -m signalforge_daily.cli --config /home/deming/work/signalforge_daily/config.json
+uv sync
 ```
 
-Collected items are saved under `paper/papers_latest.jsonl`.
-Downloaded PDFs are cached under `paper/pdf_cache/`.
-Selected PDFs are copied to `paper/pdfs/`.
+Set the API key for CLI usage:
 
-Run blog tracker:
-
-```
-python -m signalforge_daily.blog_cli --source all
+```bash
+export IFLOW_API_KEY=your_key
 ```
 
-Blog outputs are saved under `blog/`, and sources are tracked in `blog/sources.txt` (first line is `last_run_at\t<iso>`).
+On Windows PowerShell:
 
-Run AI daily digest (Python):
+```powershell
+$env:IFLOW_API_KEY = "your_key"
+```
+
+Optional Langfuse telemetry:
+
+```bash
+export LANGFUSE_PUBLIC_KEY=your_public_key
+export LANGFUSE_SECRET_KEY=your_secret_key
+export LANGFUSE_HOST=https://cloud.langfuse.com
+```
+
+## Digest CLI
+
+Generate a Chinese digest:
 
 ```bash
 uv run python -m signalforge_daily.digest_cli --hours 24 --top-n 15 --lang zh
 ```
 
-Digest output is saved under `output/digest-YYYYMMDD.md` by default.
-
-Advanced digest options:
+Write to a specific Markdown path:
 
 ```bash
 uv run python -m signalforge_daily.digest_cli \
@@ -169,59 +126,119 @@ uv run python -m signalforge_daily.digest_cli \
   --max-ai-articles 120
 ```
 
-Optional custom feeds file:
+Use a custom feed list:
 
 ```bash
 uv run python -m signalforge_daily.digest_cli --feeds-file ./my_feeds.txt
 ```
 
-`my_feeds.txt` format (`name<TAB>rss_url`, or only `rss_url` per line):
+`my_feeds.txt` accepts `name<TAB>rss_url` or a bare RSS URL per line:
 
 ```text
 simonwillison.net	https://simonwillison.net/atom/everything/
 https://example.com/rss.xml
 ```
 
-## Graph Visualization
+## Other CLIs
 
-Print Mermaid source:
-
-```bash
-python /home/deming/work/signalforge_daily/scripts/graph_viz.py --format mermaid
-```
-
-Write Mermaid to file:
+Run paper collection:
 
 ```bash
-python /home/deming/work/signalforge_daily/scripts/graph_viz.py --format mermaid --out /tmp/graph.mmd
+uv run python -m signalforge_daily.cli \
+  --topic "RTL 代码生成 且使用cvdp数据集或RealBench数据集" \
+  --requirements "使用cvdp数据集或RealBench数据集" \
+  --content-type paper \
+  --start "2025-09-01" \
+  --end "2026-01-15" \
+  --tz "Asia/Shanghai" \
+  --iflow-model "qwen3-max" \
+  --max-results 5 \
+  --pdf-max-chars 16000
 ```
 
-Write PNG (if mermaid rendering is available):
+Run from `config.json`:
 
 ```bash
-python /home/deming/work/signalforge_daily/scripts/graph_viz.py --format png --out /tmp/graph.png
+uv run python -m signalforge_daily.cli --config config.json
 ```
+
+Run blog tracking:
+
+```bash
+uv run python -m signalforge_daily.blog_cli --source all
+```
+
+Print the LangGraph pipeline as Mermaid:
+
+```bash
+uv run python scripts/graph_viz.py --format mermaid
+```
+
+## Verification
+
+For normal Python changes:
+
+```bash
+uv run python -m pytest -q
+```
+
+For desktop renderer changes:
+
+```bash
+cd app
+npm run build
+```
+
+For Tauri shell or sidecar changes:
+
+```bash
+cd app
+npm run sidecar:build
+cd src-tauri
+cargo check
+```
+
+For docs or harness-only changes, run:
+
+```bash
+bash scripts/harness_check.sh
+```
+
+If Bash is unavailable on Windows, run an equivalent file-presence check and record the limitation in `.harness/session-log.md`.
 
 ## Troubleshooting
 
 ### `ModuleNotFoundError: No module named 'signalforge_daily'`
 
-Run from repo root and use `uv run`:
+Run from the repository root and prefer `uv run`:
 
 ```bash
-cd /home/deming/work/signalforge_daily
 uv run python -m signalforge_daily.digest_cli --help
 ```
 
-### `No matching distribution found for langgraph>=0.2.31`
+### `uv` cannot fetch build dependencies
 
-You are likely on Python `<3.10` or outdated system `pip`.
-Use `uv` (recommended) or upgrade Python first.
+If `uv run python -m pytest -q` cannot fetch `setuptools` or other build dependencies because of a transient TLS/network issue, use the local virtual environment when available:
 
-### Proxy errors like `127.0.0.1:7890 ... Operation not permitted`
+```powershell
+$env:PYTHONPATH = "src"
+.venv/Scripts/python.exe -m pytest -q
+```
 
-Disable local proxy env vars if proxy daemon is not running:
+### Proxy errors such as `127.0.0.1:7890`
+
+Unset proxy variables if the local proxy daemon is not running:
 
 ```bash
 unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy
 ```
+
+On PowerShell:
+
+```powershell
+Remove-Item Env:http_proxy, Env:https_proxy, Env:HTTP_PROXY, Env:HTTPS_PROXY, Env:ALL_PROXY, Env:all_proxy -ErrorAction SilentlyContinue
+```
+
+### API keys and generated files
+
+Do not commit secrets. `.env` is local only, and API keys should come from environment variables or the desktop app settings. Generated report/output directories are local artifacts, not source.

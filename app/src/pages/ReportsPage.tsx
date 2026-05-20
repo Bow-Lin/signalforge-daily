@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { MarkdownPreview } from "../components/MarkdownPreview";
+import { EmptyState, PageHeader, StatusBadge } from "../components/ui";
 import { deleteRun, revealPath } from "../services/bridge";
 import { formatDateTime } from "../services/format";
 import type { AppSnapshot } from "../types/bridge";
@@ -22,19 +23,15 @@ export function ReportsPage({ reports, onSnapshot }: Props) {
 
   return (
     <div className="page reports-page">
-      <header className="page-header">
-        <div>
-          <span className="eyebrow">Reports</span>
-          <h1>Digest history</h1>
-        </div>
-      </header>
+      <PageHeader
+        eyebrow="REPORTS"
+        title="报告历史"
+        description="阅读、复制和回溯每一次本地生成的 Daily Digest。"
+      />
       <div className="reports-layout">
         <section className="report-list">
           {reports.length === 0 ? (
-            <div className="panel empty">
-              <h2>No reports yet</h2>
-              <p>Generated digest reports will appear here.</p>
-            </div>
+            <EmptyState title="没有报告" description="生成摘要后，历史报告会出现在这里。" />
           ) : (
             reports.map((report) => (
               <button
@@ -43,11 +40,15 @@ export function ReportsPage({ reports, onSnapshot }: Props) {
                 onClick={() => setSelectedId(report.id)}
               >
                 <strong>{report.title}</strong>
-                <span>Generated: {formatDateTime(report.generatedAt)}</span>
-                <span>Selected: {report.selectedCount ?? "Unknown"} · Language: {report.language === "zh" ? "中文" : "English"} · Status: Success</span>
+                <span>{formatDateTime(report.generatedAt)}</span>
+                <div className="report-item-meta">
+                  <StatusBadge tone="success">成功</StatusBadge>
+                  <span>{report.selectedCount ?? "未记录"} 条入选</span>
+                  <span>{report.language === "zh" ? "中文" : "英文"}</span>
+                </div>
                 <div className="item-actions">
-                  <span onClick={(event) => { event.stopPropagation(); revealPath(report.markdownPath); }}>Reveal in Folder</span>
-                  {report.runId && <span onClick={(event) => { event.stopPropagation(); removeFromList(report); }}>Delete from list</span>}
+                  <span onClick={(event) => { event.stopPropagation(); revealPath(report.markdownPath); }}>在文件夹中显示</span>
+                  {report.runId && <span onClick={(event) => { event.stopPropagation(); removeFromList(report); }}>从列表移除</span>}
                 </div>
               </button>
             ))

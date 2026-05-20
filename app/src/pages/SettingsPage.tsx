@@ -1,4 +1,5 @@
 import { SettingsForm } from "../components/SettingsForm";
+import { PageHeader } from "../components/ui";
 import type { AppSnapshot } from "../types/bridge";
 import type { AppConfig } from "../types/config";
 
@@ -10,12 +11,11 @@ type Props = {
 export function SettingsPage({ config, onSaved }: Props) {
   return (
     <div className="page">
-      <header className="page-header">
-        <div>
-          <span className="eyebrow">Settings</span>
-          <h1>Local workspace and digest defaults</h1>
-        </div>
-      </header>
+      <PageHeader
+        eyebrow="SETTINGS"
+        title="本地配置"
+        description="管理工作区、AI Provider、相关性偏好和摘要默认值。"
+      />
       <SettingsForm config={config} onSaved={onSaved} />
     </div>
   );

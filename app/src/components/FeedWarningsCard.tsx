@@ -11,7 +11,7 @@ export function FeedWarningsCard({ run }: Props) {
   return (
     <section className="panel warning-panel stacked">
       <div>
-        <strong>摘要已生成，但有信息源未成功读取。</strong>
+        <strong>部分信息源读取失败</strong>
         <p>{failures.length} 个信息源加载失败。本次摘要已使用成功读取的信息源生成。</p>
       </div>
       <details className="warning-details">

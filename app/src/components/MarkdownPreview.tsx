@@ -1,4 +1,5 @@
 import { marked } from "marked";
+import type { MouseEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { copyText, openPath, readMarkdown, revealPath } from "../services/bridge";
 import type { ReportRecord } from "../types/report";
@@ -22,11 +23,20 @@ export function MarkdownPreview({ report }: Props) {
 
   const html = useMemo(() => marked.parse(markdown, { async: false }), [markdown]);
 
+  const openMarkdownLink = (event: MouseEvent<HTMLElement>) => {
+    const target = event.target;
+    if (!(target instanceof HTMLAnchorElement)) return;
+    const href = target.href || target.getAttribute("href");
+    if (!href) return;
+    event.preventDefault();
+    openPath(href);
+  };
+
   if (!report) {
     return (
       <section className="preview empty">
-        <h2>Select a report</h2>
-        <p>Markdown preview will appear here.</p>
+        <h2>选择一份报告</h2>
+        <p>Markdown 预览会显示在这里。</p>
       </section>
     );
   }
@@ -39,12 +49,12 @@ export function MarkdownPreview({ report }: Props) {
           <span>{report.markdownPath}</span>
         </div>
         <div className="actions">
-          <button className="secondary" onClick={() => copyText(markdown)}>Copy Markdown</button>
-          <button className="secondary" onClick={() => openPath(report.markdownPath)}>Open</button>
-          <button className="secondary" onClick={() => revealPath(report.markdownPath)}>Reveal</button>
+          <button className="secondary" onClick={() => copyText(markdown)}>复制 Markdown</button>
+          <button className="secondary" onClick={() => openPath(report.markdownPath)}>打开文件</button>
+          <button className="secondary" onClick={() => revealPath(report.markdownPath)}>在文件夹中显示</button>
         </div>
       </div>
-      {error ? <p className="soft-error">{error}</p> : <article className="markdown" dangerouslySetInnerHTML={{ __html: html }} />}
+      {error ? <p className="soft-error">{error}</p> : <article className="markdown" onClick={openMarkdownLink} dangerouslySetInnerHTML={{ __html: html }} />}
     </section>
   );
 }

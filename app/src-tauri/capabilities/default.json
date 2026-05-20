@@ -5,6 +5,7 @@
   "windows": ["*"],
   "permissions": [
     "core:default",
-    "core:event:allow-listen"
+    "core:event:allow-listen",
+    "notification:default"
   ]
 }

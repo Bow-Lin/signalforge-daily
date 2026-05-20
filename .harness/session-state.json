@@ -1,115 +1,59 @@
 {
-  "task_id": "desktop-app-v0.1-2026-05-11",
+  "task_id": "automation-scheduler-bugfix-2026-05-20",
   "status": "completed",
   "current_phase": "handoff_ready",
-  "last_updated": "2026-05-13T00:00:00+08:00",
+  "last_updated": "2026-05-20T00:00:00+08:00",
   "active_plan": [
-    "Chinese-localize visible Today page and primary navigation copy.",
-    "Promote Today summary and Top Picks above technical run metadata.",
-    "Render Top Picks as reader-focused cards with source, tags, recommendation reason, and actions.",
-    "Move report path, duration, current step, failed feeds, raw fetched count, and logs into collapsed run details.",
-    "Run frontend verification and update handoff records."
+    "Completed: verified commit-main P2 findings against the Tauri scheduler and runner code.",
+    "Completed: added Rust regression tests for automatic preflight failure RunRecord creation and startup-missed scheduled-slot consumption.",
+    "Completed: fixed start_digest preflight failure persistence and scheduler startup-missed state handling.",
+    "Completed: ran Rust, frontend, Python, sidecar, and harness validation.",
+    "Completed: re-ran commit-main review gate with no remaining P1/P2 findings."
   ],
   "next_3_steps": [
-    "Run npm run app:dev and visually inspect the Tauri-rendered Today page with real local data.",
-    "Decide whether Favorites/Sources should become real routes or stay as disabled placeholders.",
-    "Plan the next desktop polish pass after the landed SignalForge Daily rename and Today redesign."
+    "Perform live Tauri smoke testing for automation, notifications, and tray actions.",
+    "In the Tauri app, enable automation with a near-future time and verify one scheduled run is created.",
+    "Temporarily remove the API key and verify Today shows the failed automatic run with the missing API key recovery card."
   ],
   "changed_files": [
-    ".gitignore",
-    "README.md",
     "current-task.md",
-    "docs/architecture.md",
-    "docs/decisions.md",
-    "docs/verification.md",
     ".harness/session-state.json",
     ".harness/session-log.md",
-    "AGENTS.md",
-    "app/index.html",
-    "app/package-lock.json",
-    "app/package.json",
-    "app/tsconfig.json",
-    "app/vite.config.ts",
-    "app/src/main.tsx",
-    "app/src/styles.css",
-    "app/src/app/App.tsx",
-    "app/src/app/routes.ts",
-    "app/src/components/AppShell.tsx",
-    "app/src/components/ErrorRecoveryCard.tsx",
-    "app/src/components/FeedWarningsCard.tsx",
-    "app/src/components/TodayOverviewCard.tsx",
-    "app/src/components/LatestDigestCard.tsx",
-    "app/src/components/MarkdownPreview.tsx",
-    "app/src/components/RunStatusCard.tsx",
-    "app/src/components/SettingsForm.tsx",
-    "app/src/components/TopPicksList.tsx",
-    "app/src/app/App.tsx",
-    "app/src/pages/ReportsPage.tsx",
-    "app/src/pages/SettingsPage.tsx",
-    "app/src/pages/SetupPage.tsx",
-    "app/src/pages/TodayPage.tsx",
-    "app/src/services/bridge.ts",
-    "app/src/services/format.ts",
-    "app/src/types/bridge.ts",
-    "app/src/types/config.ts",
-    "app/src/types/report.ts",
-    "app/src/types/run.ts",
-    "app/src-tauri/Cargo.lock",
-    "app/src-tauri/Cargo.toml",
-    "app/src-tauri/build.rs",
-    "app/src-tauri/tauri.conf.json",
-    "app/src-tauri/binaries/README.md",
-    "app/src-tauri/icons/icon.ico",
-    "app/src-tauri/sidecar/build-digest-sidecar.ps1",
-    "app/src-tauri/sidecar/digest-sidecar/Cargo.lock",
-    "app/src-tauri/sidecar/digest-sidecar/Cargo.toml",
-    "app/src-tauri/sidecar/digest-sidecar/src/main.rs",
-    "app/src-tauri/src/lib.rs",
-    "app/src-tauri/src/main.rs"
-    ,
-    "pyproject.toml",
-    "uv.lock",
-    "scripts/graph_viz.py",
-    "scripts/run_digest_with_retry.sh",
-    "tests/test_digest.py",
-    "src/signalforge_daily/"
+    "docs/decisions.md",
+    "app/src-tauri/src/lib.rs"
   ],
   "validation": {
     "last_commands": [
-      "cd app && npm run build",
-      "cd app && npm run sidecar:build",
+      "cd app/src-tauri && cargo test",
       "cd app/src-tauri && cargo check",
+      "cd app && npm run build",
       "uv run python -m pytest -q",
-      "uv run python -m signalforge_daily.digest_cli --help"
+      "cd app && npm run sidecar:build",
+      "uv run python -m json.tool .harness/session-state.json",
+      "bash scripts/harness_check.sh (skipped: bash unavailable)",
+      "PowerShell equivalent of scripts/harness_check.sh"
     ],
-    "last_result": "passed for frontend build, sidecar build, Rust check, Python tests, and digest CLI help; Browser/IAB visual smoke check skipped because no callable Browser/IAB tool was exposed and the renderer depends on Tauri invoke runtime",
+    "last_result": "Commit-main verification passed for diff check, Rust tests, Cargo check, frontend build, Python tests, sidecar build, harness JSON validation, and PowerShell harness file-presence check.",
     "known_failures": [
-      "Real digest generation requires API credentials and network access.",
-      "uv editable rebuild previously failed to fetch setuptools from PyPI due TLS handshake EOF; latest pytest run passed.",
-      "npm warns about unknown electron-mirror env config, but build succeeded.",
-      "Browser/IAB visual QA was not available in the Today redesign session."
+      "Live scheduled digest generation was not run because it requires user-local API credentials and schedule timing.",
+      "Live notification/tray click behavior still needs runtime smoke testing in the Tauri shell."
     ]
   },
   "cognitive_state": {
     "failure_count": 0,
-    "current_mode": "desktop_app_handoff",
+    "current_mode": "commit_main_handoff",
     "tried_approaches": [
-      "Harness context restoration",
-      "Digest CLI contract review",
-      "Electron app scaffold",
-      "Tauri migration",
-      "Rust and Visual Studio C++ Build Tools installation",
-      "Sidecar launcher implementation",
-      "Frontend, Rust, sidecar, and Python verification",
-      "Full SignalForge Daily package rename",
-      "Today quick digest controls",
-      "Report-backed partial feed failure normalization",
-      "Today reading-page hierarchy and Chinese UX redesign"
+      "Review-gate finding verification",
+      "Rust regression tests before implementation",
+      "Runner preflight failure record persistence",
+      "Startup-missed scheduler state consolidation",
+      "Commit-main review gate",
+      "Pre-commit verification"
     ],
     "blocked_on": null
   },
   "handoff": {
-    "last_summary": "Restructured Today into a Chinese-first reading page with summary overview, card-based Top Picks, collapsed run details, friendly unknown-state fallbacks, and simplified reader actions. Commit-main verification passed.",
-    "resume_from": "Run npm run app:dev for a real Tauri visual check, then decide whether Favorites/Sources should become real routes."
+    "last_summary": "Fixed v0.3 automation blockers: missing API key preflight failures now create failed RunRecords, and startup-missed runs/skips consume the same-day scheduled slot.",
+    "resume_from": "Perform live Tauri automation, notification, and tray smoke testing with local credentials."
   }
 }

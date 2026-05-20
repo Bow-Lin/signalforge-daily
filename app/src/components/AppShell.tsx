@@ -28,8 +28,6 @@ export function AppShell({ route, onRouteChange, children }: Props) {
               {item.label}
             </button>
           ))}
-          <button className="nav-item disabled" disabled>收藏</button>
-          <button className="nav-item disabled" disabled>信息源</button>
         </nav>
       </aside>
       <main className="content">{children}</main>
