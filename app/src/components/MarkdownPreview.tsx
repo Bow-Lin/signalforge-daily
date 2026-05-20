@@ -16,6 +16,10 @@ export function MarkdownPreview({ report }: Props) {
     setMarkdown("");
     setError("");
     if (!report) return;
+    if (report.markdown) {
+      setMarkdown(report.markdown);
+      return;
+    }
     readMarkdown(report.markdownPath)
       .then(setMarkdown)
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
@@ -50,8 +54,8 @@ export function MarkdownPreview({ report }: Props) {
         </div>
         <div className="actions">
           <button className="secondary" onClick={() => copyText(markdown)}>复制 Markdown</button>
-          <button className="secondary" onClick={() => openPath(report.markdownPath)}>打开文件</button>
-          <button className="secondary" onClick={() => revealPath(report.markdownPath)}>在文件夹中显示</button>
+          <button className="secondary" disabled={report.markdownPath.startsWith("sample://")} onClick={() => openPath(report.markdownPath)}>打开文件</button>
+          <button className="secondary" disabled={report.markdownPath.startsWith("sample://")} onClick={() => revealPath(report.markdownPath)}>在文件夹中显示</button>
         </div>
       </div>
       {error ? <p className="soft-error">{error}</p> : <article className="markdown" onClick={openMarkdownLink} dangerouslySetInnerHTML={{ __html: html }} />}

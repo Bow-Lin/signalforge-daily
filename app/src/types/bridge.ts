@@ -23,6 +23,16 @@ export type AutomationStatus = {
   lastSkipReason?: string;
 };
 
+export type AppInfo = {
+  appName: string;
+  version: string;
+  buildDate: string;
+  platform: string;
+  workspacePath?: string;
+  repositoryUrl: string;
+  logsPath?: string;
+};
+
 export type NewsCollectionBridge = {
   getSnapshot: () => Promise<AppSnapshot>;
   chooseFolder: () => Promise<string | null>;
@@ -31,6 +41,8 @@ export type NewsCollectionBridge = {
   generateDigest: () => Promise<RunRecord>;
   getAutomationStatus: () => Promise<AutomationStatus>;
   setAutomationPaused: (paused: boolean) => Promise<AppSnapshot>;
+  getAppInfo: () => Promise<AppInfo>;
+  openLogsFolder: () => Promise<void>;
   readMarkdown: (path: string) => Promise<string>;
   copyText: (text: string) => Promise<void>;
   openPath: (path: string) => Promise<void>;

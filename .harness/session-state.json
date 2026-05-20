@@ -1,59 +1,89 @@
 {
-  "task_id": "automation-scheduler-bugfix-2026-05-20",
+  "task_id": "v0.4-packaging-release-2026-05-20",
   "status": "completed",
   "current_phase": "handoff_ready",
   "last_updated": "2026-05-20T00:00:00+08:00",
   "active_plan": [
-    "Completed: verified commit-main P2 findings against the Tauri scheduler and runner code.",
-    "Completed: added Rust regression tests for automatic preflight failure RunRecord creation and startup-missed scheduled-slot consumption.",
-    "Completed: fixed start_digest preflight failure persistence and scheduler startup-missed state handling.",
-    "Completed: ran Rust, frontend, Python, sidecar, and harness validation.",
-    "Completed: re-ran commit-main review gate with no remaining P1/P2 findings."
+    "Completed: inspected Tauri metadata, scripts, Settings, bridge, report preview, and snapshot data flow.",
+    "Completed: implemented v0.4 metadata, About diagnostics, and Demo Mode.",
+    "Completed: added release documentation and smoke checklist.",
+    "Completed: ran verification and recorded packaging limitation."
   ],
   "next_3_steps": [
-    "Perform live Tauri smoke testing for automation, notifications, and tray actions.",
-    "In the Tauri app, enable automation with a near-future time and verify one scheduled run is created.",
-    "Temporarily remove the API key and verify Today shows the failed automatic run with the missing API key recovery card."
+    "Re-run cd app && npm run package on a network-stable release machine to produce NSIS/MSI installers.",
+    "Run docs/smoke-test.md against an installed build.",
+    "Prepare GitHub Release notes from CHANGELOG.md."
   ],
   "changed_files": [
+    "CHANGELOG.md",
     "current-task.md",
     ".harness/session-state.json",
     ".harness/session-log.md",
+    "README.md",
+    "app/package.json",
+    "app/package-lock.json",
+    "app/src-tauri/Cargo.toml",
+    "app/src-tauri/Cargo.lock",
+    "app/src-tauri/build.rs",
+    "app/src-tauri/tauri.conf.json",
+    "app/src-tauri/src/lib.rs",
+    "app/src/app/App.tsx",
+    "app/src/components/MarkdownPreview.tsx",
+    "app/src/demo/sampleData.ts",
+    "app/src/pages/SettingsPage.tsx",
+    "app/src/pages/SetupPage.tsx",
+    "app/src/pages/SourcesPage.tsx",
+    "app/src/pages/TodayPage.tsx",
+    "app/src/services/bridge.ts",
+    "app/src/styles.css",
+    "app/src/types/bridge.ts",
+    "app/src/types/report.ts",
+    "docs/architecture.md",
     "docs/decisions.md",
-    "app/src-tauri/src/lib.rs"
+    "docs/error-journal.md",
+    "docs/privacy.md",
+    "docs/release-checklist.md",
+    "docs/smoke-test.md",
+    "docs/troubleshooting.md",
+    "docs/verification.md"
   ],
   "validation": {
     "last_commands": [
-      "cd app/src-tauri && cargo test",
-      "cd app/src-tauri && cargo check",
+      "cd app && npm install",
       "cd app && npm run build",
-      "uv run python -m pytest -q",
+      "cd app/src-tauri && cargo check",
+      "cd app/src-tauri && cargo test",
       "cd app && npm run sidecar:build",
+      "uv run python -m pytest -q",
+      "cd app && npm run package",
       "uv run python -m json.tool .harness/session-state.json",
-      "bash scripts/harness_check.sh (skipped: bash unavailable)",
+      "git diff --check",
       "PowerShell equivalent of scripts/harness_check.sh"
     ],
-    "last_result": "Commit-main verification passed for diff check, Rust tests, Cargo check, frontend build, Python tests, sidecar build, harness JSON validation, and PowerShell harness file-presence check.",
+    "last_result": "Build, tests, sidecar build, JSON validation, diff check, and harness file-presence check passed. Packaging built the release exe but installer bundling failed on Tauri NSIS helper download timeout.",
     "known_failures": [
-      "Live scheduled digest generation was not run because it requires user-local API credentials and schedule timing.",
-      "Live notification/tray click behavior still needs runtime smoke testing in the Tauri shell."
+      "Windows installers will be unsigned unless signing credentials are supplied outside the repository.",
+      "Interactive notification/tray smoke testing requires a desktop runtime session.",
+      "npm run package failed to produce NSIS/MSI installers because downloading nsis_tauri_utils.dll timed out; release exe exists at app/src-tauri/target/release/signalforge-daily.exe."
     ]
   },
   "cognitive_state": {
     "failure_count": 0,
-    "current_mode": "commit_main_handoff",
+    "current_mode": "v0.4_packaging_release",
     "tried_approaches": [
-      "Review-gate finding verification",
-      "Rust regression tests before implementation",
-      "Runner preflight failure record persistence",
-      "Startup-missed scheduler state consolidation",
-      "Commit-main review gate",
-      "Pre-commit verification"
+      "Harness context restoration",
+      "Tauri metadata inspection",
+      "Settings and snapshot data-flow inspection",
+      "Metadata/package script updates",
+      "About diagnostics",
+      "Demo Mode sample data",
+      "Release documentation",
+      "Build and packaging verification"
     ],
     "blocked_on": null
   },
   "handoff": {
-    "last_summary": "Fixed v0.3 automation blockers: missing API key preflight failures now create failed RunRecords, and startup-missed runs/skips consume the same-day scheduled slot.",
-    "resume_from": "Perform live Tauri automation, notification, and tray smoke testing with local credentials."
+    "last_summary": "Completed v0.4 Packaging & Release readiness implementation; installer bundling needs retry on a network-stable release machine.",
+    "resume_from": "Re-run npm run package to produce NSIS/MSI installers, then perform the manual smoke checklist."
   }
 }

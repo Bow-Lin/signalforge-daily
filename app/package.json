@@ -1,6 +1,6 @@
 {
   "name": "signalforge-daily-app",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "Local-first desktop app for AI daily digest generation.",
@@ -8,7 +8,9 @@
     "dev": "vite --host 127.0.0.1",
     "sidecar:build": "powershell -ExecutionPolicy Bypass -File ./src-tauri/sidecar/build-digest-sidecar.ps1",
     "app:dev": "powershell -ExecutionPolicy Bypass -File ./scripts/run-tauri.ps1 -Mode dev",
+    "tauri:dev": "powershell -ExecutionPolicy Bypass -File ./scripts/run-tauri.ps1 -Mode dev",
     "tauri:build": "powershell -ExecutionPolicy Bypass -File ./scripts/run-tauri.ps1 -Mode build",
+    "package": "npm run tauri:build",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1"
   },

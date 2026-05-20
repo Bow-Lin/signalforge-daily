@@ -1,244 +1,218 @@
 # SignalForge Daily
 
-SignalForge Daily is a local-first technical digest tool for AI, agents, coding, EDA, and adjacent engineering signals. It combines a Tauri desktop app with the existing Python collection and digest CLIs.
+SignalForge Daily 是一个本地优先的技术信号日报桌面应用。它把 RSS / Blog 信息源、AI 摘要、来源质量、历史报告和自动生成习惯整合到一个 Tauri 桌面 App 中，重点服务 AI、Agent、Coding、EDA 和工程效率方向的信息跟踪。
 
-The desktop app is the primary product surface: configure a local workspace and an OpenAI-compatible API key, generate a daily digest, read Chinese-first Top Picks, inspect source warnings, and open historical Markdown reports.
+当前版本：`v0.4.0`
 
-## What It Does
+## 产品截图
 
-- Generates AI-assisted technical digests from built-in RSS and blog sources.
-- Presents Today as a Chinese-first reading page with summary stats, Top Picks, recommendation reasons, and collapsed run details.
-- Treats partial feed failures as warnings when a usable report was generated.
-- Stores app data locally in the workspace you choose.
-- Keeps Python CLIs available for digest generation, paper collection, blog tracking, and graph visualization.
+截图占位：
 
-## Project Layout
+- `docs/assets/today.png`：Today 页面
+- `docs/assets/sources.png`：Sources 信息源质量页面
+- `docs/assets/reports.png`：Reports Markdown 预览
+- `docs/assets/settings.png`：Settings / About
+
+## 核心功能
+
+- First Run：首次启动进入配置流程，不要求用户手动改 `.env`。
+- Digest Runner：一键调用现有 Python digest CLI，捕获 stdout / stderr，记录 RunRecord。
+- Reports：历史 Markdown 报告列表与内置预览。
+- Source Quality & Trust：启用 / 禁用 source，观察抓取、入选、失败和噪声源。
+- Relevance Profile：配置关注主题、屏蔽主题和偏好内容类型。
+- Feedback：对 Top Picks 记录有用、不感兴趣、隐藏类似。
+- Automation：每天或工作日自动生成，支持通知、启动补跑和系统托盘菜单。
+- Demo Mode：没有 API Key 时也能查看完整样例体验。
+- About / Diagnostics：复制不含 secret 的诊断信息，打开 logs folder。
+
+## 适合人群
+
+- 每天需要追踪 AI / Agent / Coding 技术动态的工程师。
+- 需要把 RSS 信息源逐步调成个人技术情报系统的用户。
+- 希望报告、日志、运行记录都留在本地 workspace 的用户。
+- 想试用本地优先桌面 AI 工具闭环的开发者。
+
+## 安装方式
+
+v0.4 优先支持 Windows x64 安装包。发布包生成后位于：
 
 ```text
-app/                         Tauri + React + TypeScript desktop app
-app/src/                     React renderer pages and components
-app/src-tauri/               Rust shell, commands, persistence, sidecar runner
-app/src-tauri/sidecar/       digest-sidecar launcher for the Python CLI
-src/signalforge_daily/       Python package and business logic
-tests/                       pytest coverage for digest behavior
-docs/                        architecture, verification, decisions, error journal
-.harness/                    durable session state and log
+app/src-tauri/target/release/bundle/nsis/*.exe
+app/src-tauri/target/release/bundle/msi/*.msi
 ```
 
-Generated outputs stay local and are not source files: `paper/`, `blog/`, `output/`, `logs/`, app workspace `runs/`, app workspace `reports/`, and app workspace `logs/`.
+当前仓库不包含签名证书。未签名安装包可能触发 Windows SmartScreen，发布时需要在 Release Notes 中明确说明。
 
-## Requirements
+## 从源码运行
+
+依赖：
 
 - Python `>=3.10`
-- `uv` for Python environment management
-- Node.js and npm for the desktop renderer
-- Rust and the Windows C++ build tools for Tauri shell checks/builds
-- An iFlow/OpenAI-compatible API key for live digest generation
+- `uv`
+- Node.js + npm
+- Rust + Windows C++ Build Tools
 
-## Desktop App
-
-Install dependencies and run the local app:
+安装并启动开发版：
 
 ```bash
 cd app
 npm install
-npm run app:dev
+npm run tauri:dev
 ```
 
-In the app:
-
-1. Choose a local workspace folder.
-2. Configure the API key, model, base URL, and proxy settings.
-3. Pick digest defaults such as language and time range.
-4. Click `生成今日摘要` on Today.
-
-The selected workspace contains:
-
-```text
-app-config.json
-runs/
-logs/
-reports/
-```
-
-The v0.1 sidecar launcher delegates to:
-
-```bash
-uv run python -m signalforge_daily.digest_cli
-```
-
-Useful app commands:
+仅启动前端开发服务器：
 
 ```bash
 cd app
-npm run build
-npm run sidecar:build
-npm run tauri:build
+npm run dev
 ```
 
-## Python Setup
+## 配置 API Key
 
-Recommended:
+桌面 App 中进入 Settings，配置：
 
-```bash
-uv sync
-```
+- Workspace folder
+- API Key
+- Base URL
+- Model
+- Proxy mode
 
-Set the API key for CLI usage:
+CLI 使用时也可以通过环境变量提供：
 
 ```bash
 export IFLOW_API_KEY=your_key
 ```
 
-On Windows PowerShell:
+PowerShell：
 
 ```powershell
 $env:IFLOW_API_KEY = "your_key"
 ```
 
-Optional Langfuse telemetry:
+不要提交 `.env`、API Key、token 或签名证书。
 
-```bash
-export LANGFUSE_PUBLIC_KEY=your_public_key
-export LANGFUSE_SECRET_KEY=your_secret_key
-export LANGFUSE_HOST=https://cloud.langfuse.com
-```
+## 生成第一份日报
 
-## Digest CLI
+1. 首次启动选择 workspace。
+2. 填写 AI Provider 配置。
+3. 点击 Test Connection。
+4. 进入 Today。
+5. 点击 `生成今日摘要`。
+6. 在 Top Picks 阅读推荐，并在 Reports 预览完整 Markdown。
 
-Generate a Chinese digest:
+没有 API Key 时，可在 Setup 页面点击 `进入 Demo Mode` 查看样例日报。
 
-```bash
-uv run python -m signalforge_daily.digest_cli --hours 24 --top-n 15 --lang zh
-```
+## 信息源质量管理
 
-Write to a specific Markdown path:
+Sources 页面显示：
 
-```bash
-uv run python -m signalforge_daily.digest_cli \
-  --hours 24 \
-  --top-n 15 \
-  --lang zh \
-  --output ./output/digest-$(date +%Y%m%d).md \
-  --feed-concurrency 10 \
-  --ai-batch-size 10 \
-  --ai-retries 1 \
-  --max-ai-articles 120
-```
+- 启用信息源数量
+- 健康源
+- 噪声较高源
+- 最近失败源
+- 每个 source 的抓取数、入选数、入选率、最近失败次数
 
-Use a custom feed list:
+用户可以启用 / 禁用 source，并添加新的 RSS / Blog / Custom source。
 
-```bash
-uv run python -m signalforge_daily.digest_cli --feeds-file ./my_feeds.txt
-```
+## 自动生成与通知
 
-`my_feeds.txt` accepts `name<TAB>rss_url` or a bare RSS URL per line:
+Settings 的 Automation 区域支持：
+
+- 每天 / 工作日运行
+- 指定运行时间
+- 成功 / 失败通知
+- 启动时补跑错过任务
+- 今天已生成则跳过
+- 暂停 / 恢复自动生成
+
+系统托盘菜单包含打开应用、生成今日摘要、打开最新报告、查看信息源状态、暂停 / 恢复自动生成和退出。
+
+## 本地数据与隐私
+
+SignalForge Daily 是本地优先应用。用户选择的 workspace 会保存：
 
 ```text
-simonwillison.net	https://simonwillison.net/atom/everything/
-https://example.com/rss.xml
+app-config.json
+runs/
+reports/
+logs/
+metadata/
 ```
 
-## Other CLIs
+不会上传到 SignalForge Daily 自有服务器。AI Provider 会收到用于摘要和评分的文章标题、摘要、链接和相关 prompt。详见 [docs/privacy.md](docs/privacy.md)。
 
-Run paper collection:
+## 常见问题
+
+详细故障排查见 [docs/troubleshooting.md](docs/troubleshooting.md)。
+
+常见问题包括：
+
+- API Key 未配置
+- AI Provider 连接失败
+- 代理错误
+- 没有抓取到文章
+- 部分信息源失败
+- 通知权限未开启
+- 自动生成没有触发
+- Windows SmartScreen 提示
+
+## 开发命令
 
 ```bash
-uv run python -m signalforge_daily.cli \
-  --topic "RTL 代码生成 且使用cvdp数据集或RealBench数据集" \
-  --requirements "使用cvdp数据集或RealBench数据集" \
-  --content-type paper \
-  --start "2025-09-01" \
-  --end "2026-01-15" \
-  --tz "Asia/Shanghai" \
-  --iflow-model "qwen3-max" \
-  --max-results 5 \
-  --pdf-max-chars 16000
+cd app
+npm run dev
+npm run build
+npm run tauri:dev
+npm run tauri:build
+npm run package
+npm run sidecar:build
 ```
 
-Run from `config.json`:
-
-```bash
-uv run python -m signalforge_daily.cli --config config.json
-```
-
-Run blog tracking:
-
-```bash
-uv run python -m signalforge_daily.blog_cli --source all
-```
-
-Print the LangGraph pipeline as Mermaid:
-
-```bash
-uv run python scripts/graph_viz.py --format mermaid
-```
-
-## Verification
-
-For normal Python changes:
+Python 验证：
 
 ```bash
 uv run python -m pytest -q
-```
-
-For desktop renderer changes:
-
-```bash
-cd app
-npm run build
-```
-
-For Tauri shell or sidecar changes:
-
-```bash
-cd app
-npm run sidecar:build
-cd src-tauri
-cargo check
-```
-
-For docs or harness-only changes, run:
-
-```bash
-bash scripts/harness_check.sh
-```
-
-If Bash is unavailable on Windows, run an equivalent file-presence check and record the limitation in `.harness/session-log.md`.
-
-## Troubleshooting
-
-### `ModuleNotFoundError: No module named 'signalforge_daily'`
-
-Run from the repository root and prefer `uv run`:
-
-```bash
 uv run python -m signalforge_daily.digest_cli --help
 ```
 
-### `uv` cannot fetch build dependencies
-
-If `uv run python -m pytest -q` cannot fetch `setuptools` or other build dependencies because of a transient TLS/network issue, use the local virtual environment when available:
-
-```powershell
-$env:PYTHONPATH = "src"
-.venv/Scripts/python.exe -m pytest -q
-```
-
-### Proxy errors such as `127.0.0.1:7890`
-
-Unset proxy variables if the local proxy daemon is not running:
+Tauri shell 验证：
 
 ```bash
-unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy
+cd app/src-tauri
+cargo test
+cargo check
 ```
 
-On PowerShell:
+## 发布说明
 
-```powershell
-Remove-Item Env:http_proxy, Env:https_proxy, Env:HTTP_PROXY, Env:HTTPS_PROXY, Env:ALL_PROXY, Env:all_proxy -ErrorAction SilentlyContinue
+发布前请执行：
+
+- [docs/release-checklist.md](docs/release-checklist.md)
+- [docs/smoke-test.md](docs/smoke-test.md)
+
+构建 Windows 安装包：
+
+```bash
+cd app
+npm run package
 ```
 
-### API keys and generated files
+构建产物：
 
-Do not commit secrets. `.env` is local only, and API keys should come from environment variables or the desktop app settings. Generated report/output directories are local artifacts, not source.
+```text
+app/src-tauri/target/release/bundle/nsis/
+app/src-tauri/target/release/bundle/msi/
+```
+
+已知限制：
+
+- 当前安装包未签名，可能触发 SmartScreen。
+- 自动更新未实现，只提供 GitHub Releases 入口。
+- 真实 digest、通知和托盘需要在交互式桌面环境中 smoke test。
+
+## Roadmap
+
+- v0.4 Packaging & Release：安装包、Demo Mode、About、诊断、文档。
+- v0.5 Feedback Learning：让本地反馈逐步影响排序。
+- v0.6 Source Marketplace：更好的源发现、导入和健康诊断。
+- v0.7 Release Hardening：签名、自动更新、崩溃恢复和更完整的 installer QA。

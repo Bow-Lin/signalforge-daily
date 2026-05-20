@@ -30,6 +30,14 @@
 - Workaround: Use ASCII-safe CLI status output, set `PYTHONIOENCODING=utf-8`/`PYTHONUTF8=1` for runner subprocesses, and migrate existing report-backed partial feed failures to success with warnings.
 - Follow-up: Prefer machine-readable runner events in a later version instead of parsing human log text.
 
+### 2026-05-20 - Tauri NSIS helper download timed out during packaging
+- Area: Desktop packaging
+- Symptom: `npm run package` built `app/src-tauri/target/release/signalforge-daily.exe`, then failed while bundling the NSIS installer with `failed to bundle project timeout: global` during download of `nsis_tauri_utils.dll`.
+- Impact: The release executable was produced, but `bundle/nsis/*.exe` and `bundle/msi/*.msi` installers were not produced in this environment.
+- Root Cause: Packaging depends on downloading Tauri bundler helper binaries when they are not already cached; the current network request timed out.
+- Workaround: Re-run `cd app && npm run package` on a network-stable machine or pre-cache Tauri NSIS/WiX bundler dependencies. Installer signing still requires external credentials and is not stored in the repo.
+- Follow-up: Add CI or a release machine with cached bundler dependencies for repeatable installer builds.
+
 ## Template
 
 ### YYYY-MM-DD - Title

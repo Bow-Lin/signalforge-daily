@@ -4,9 +4,10 @@ import type { AppSnapshot } from "../types/bridge";
 type Props = {
   snapshot: AppSnapshot;
   onReady: (snapshot: AppSnapshot) => void;
+  onDemo: () => void;
 };
 
-export function SetupPage({ snapshot, onReady }: Props) {
+export function SetupPage({ snapshot, onReady, onDemo }: Props) {
   return (
     <main className="setup">
       <section className="setup-copy">
@@ -19,6 +20,11 @@ export function SetupPage({ snapshot, onReady }: Props) {
           <li><strong>Test Connection</strong><span>确认模型服务可用，再进入 Today。</span></li>
           <li><strong>生成 Daily Digest</strong><span>在 Today 点击一次即可运行现有 digest CLI。</span></li>
         </ol>
+        <div className="setup-demo">
+          <strong>还没有 API Key？</strong>
+          <p>可以先进入 Demo Mode，查看 Today、Reports 和 Sources 的完整样例体验。</p>
+          <button className="secondary" onClick={onDemo}>进入 Demo Mode</button>
+        </div>
       </section>
       <section className="setup-form">
         <SettingsForm config={snapshot.config} onSaved={onReady} compact />

@@ -25,6 +25,7 @@ pip install -e .
 | CLI behavior | `uv run python -m pytest -q`; optionally run the relevant `uv run python -m signalforge_daily.<cli> --help` |
 | Desktop app renderer | `cd app && npm install` when dependencies are missing, then `npm run build` |
 | Tauri shell | `cd app && npm run sidecar:build`, then `cd app/src-tauri && cargo check` from a Visual Studio Developer Command Prompt on Windows |
+| Desktop packaging | `cd app && npm run package`; installers should appear under `app/src-tauri/target/release/bundle/`. Record bundler download/signing limitations if packaging cannot complete. |
 | Harness or docs only | `bash scripts/harness_check.sh` when available; otherwise equivalent file-presence check |
 | Graph visualization utility | `uv run python scripts/graph_viz.py --format mermaid --out /tmp/graph.mmd` on POSIX, or a local temp path on Windows |
 

@@ -1600,6 +1600,49 @@ nav {
   background: linear-gradient(rgba(246, 248, 251, 0), var(--bg-app) 28%);
 }
 
+.demo-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 1200px;
+  margin: 0 auto 18px;
+  padding: 14px 18px;
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-card);
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+.demo-banner div {
+  display: grid;
+  gap: 3px;
+}
+
+.demo-banner span,
+.setup-demo p {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.setup-demo {
+  margin-top: 28px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.about-panel {
+  margin-top: var(--page-gap);
+}
+
+.about-grid .meta-item strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 1080px) {
   .shell,
   .reports-layout,
@@ -1617,6 +1660,11 @@ nav {
 
   .source-actions {
     justify-items: start;
+  }
+
+  .demo-banner {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .page-header h1,

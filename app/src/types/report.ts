@@ -8,6 +8,7 @@ export type ReportRecord = {
   generatedAt: string;
   language: DigestLanguage;
   markdownPath: string;
+  markdown?: string;
   summary?: string;
   topPicks?: TopPick[];
   status?: "success" | "failed";

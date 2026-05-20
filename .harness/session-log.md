@@ -367,3 +367,58 @@
 - Notes:
   - `bash scripts/harness_check.sh` was not run because Bash is unavailable in this PowerShell session.
   - Live digest, notification click, tray click, and scheduled-run smoke tests still require a Tauri runtime session and local credentials.
+
+## 2026-05-20 - v0.4 Packaging and Release
+- Goal: Prepare SignalForge Daily for installable, demoable desktop release without adding research mode, paper collection UX, cloud sync, accounts, or complex new product features.
+- Context restored:
+  - v0.1-v0.3 work had been committed to `master`.
+  - Existing release gaps were metadata standardization, installer scripts/docs, About diagnostics, demo data, privacy/troubleshooting docs, changelog, and smoke checklist.
+- Implementation:
+  - Standardized app version to `0.4.0` across npm, Cargo, and Tauri config.
+  - Changed Tauri identifier to `com.signalforge.daily`.
+  - Added `npm run tauri:dev` and `npm run package` aliases.
+  - Focused Tauri bundle targets on Windows `nsis` and `msi`, with icon and publisher metadata.
+  - Added build-date environment support in `app/src-tauri/build.rs`.
+  - Added Tauri app info and open logs folder commands.
+  - Added Settings About / App Info with safe diagnostic copy that excludes API keys and full secret config.
+  - Added Demo Mode with bundled sample Today digest, Reports Markdown, and Sources quality data; demo data is marked and can be cleared.
+  - Updated Markdown preview to support bundled sample Markdown without filesystem reads.
+  - Rewrote README as a Chinese-first release guide.
+  - Added `CHANGELOG.md`, `docs/privacy.md`, `docs/troubleshooting.md`, `docs/release-checklist.md`, and `docs/smoke-test.md`.
+  - Updated architecture, verification, decisions, and error journal docs.
+- Verification:
+  - `cd app && npm install`: passed.
+  - `cd app && npm run build`: passed.
+  - `cd app/src-tauri && cargo check`: passed.
+  - `cd app/src-tauri && cargo test`: passed, 2 tests.
+  - `cd app && npm run sidecar:build`: passed.
+  - `uv run python -m pytest -q`: passed, 11 tests.
+  - `cd app && npm run package`: failed during installer bundling because downloading Tauri NSIS helper `nsis_tauri_utils.dll` timed out. The release exe was built at `app/src-tauri/target/release/signalforge-daily.exe`.
+  - `uv run python -m json.tool .harness/session-state.json`: passed.
+  - `git diff --check`: passed.
+  - PowerShell equivalent of `scripts/harness_check.sh`: passed, 18 files present.
+- Notes:
+  - `bash scripts/harness_check.sh` was not run because Bash is unavailable in this PowerShell session.
+  - NSIS/MSI installers were not produced in this environment due to network timeout while downloading bundler dependencies.
+  - Installers remain unsigned until a signing identity is supplied outside the repository.
+  - Runtime notification, tray, installer install/uninstall, and full demo smoke testing still need an interactive desktop QA pass.
+
+## 2026-05-20 - v0.4 Commit Main Review Gate
+- Goal: Review, verify, commit, and push the v0.4 Packaging & Release work to `master`.
+- Review:
+  - Re-read harness state and reviewed the current tracked diff plus relevant untracked v0.4 files.
+  - Ran a secret-oriented scan across docs, app source, Tauri source, and harness files; matches were placeholders, field names, or explicit no-secret guidance.
+  - Left `.claude/settings.local.json` untracked because it is local tool state outside the release change scope.
+  - No P1/P2 blockers found.
+- Verification:
+  - `git diff --check`: passed.
+  - `cd app && npm run build`: passed.
+  - `uv run python -m pytest -q`: passed, 11 tests.
+  - `cd app/src-tauri && cargo test`: passed, 2 tests.
+  - `cd app/src-tauri && cargo check`: passed.
+  - `cd app && npm run sidecar:build`: passed.
+  - `uv run python -m json.tool .harness/session-state.json`: passed.
+  - PowerShell equivalent of `scripts/harness_check.sh`: passed, 18 files present.
+- Notes:
+  - `bash scripts/harness_check.sh` was not run because Bash is unavailable in this PowerShell session.
+  - Installer packaging remains limited by the previously recorded Tauri NSIS helper download timeout; retry on a network-stable release machine.

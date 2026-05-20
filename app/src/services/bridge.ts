@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { AppConfig } from "../types/config";
-import type { AppSnapshot, AutomationStatus, TestConnectionResult } from "../types/bridge";
+import type { AppInfo, AppSnapshot, AutomationStatus, TestConnectionResult } from "../types/bridge";
 import type { GenerateDigestEvent, ItemFeedback, RunRecord } from "../types/run";
 
 export function getSnapshot(): Promise<AppSnapshot> {
@@ -30,6 +30,14 @@ export function getAutomationStatus(): Promise<AutomationStatus> {
 
 export function setAutomationPaused(paused: boolean): Promise<AppSnapshot> {
   return invoke("set_automation_paused", { paused });
+}
+
+export function getAppInfo(): Promise<AppInfo> {
+  return invoke("get_app_info");
+}
+
+export function openLogsFolder(): Promise<void> {
+  return invoke("open_logs_folder");
 }
 
 export function readMarkdown(path: string): Promise<string> {

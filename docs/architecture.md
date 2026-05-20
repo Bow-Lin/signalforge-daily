@@ -17,7 +17,7 @@
 - `app/`: Tauri + React + TypeScript v0.1 desktop wrapper for configuring and running the daily digest locally.
 - `app/src-tauri/`: Rust shell, Tauri commands, local persistence, report scanning, digest runner, and sidecar configuration.
 - `app/src-tauri/sidecar/digest-sidecar/`: launcher sidecar that delegates to the Python digest CLI during v0.1 development.
-- `app/src/`: React renderer pages for Today, Reports, Settings, and Setup.
+- `app/src/`: React renderer pages for Today, Reports, Sources, Settings, Setup, Demo Mode sample data, and shared UI components.
 - `scripts/graph_viz.py`: graph visualization utility.
 
 ## Data and Generated Outputs
@@ -26,7 +26,8 @@ Generated outputs are local project artifacts and should not be treated as sourc
 - `blog/`: blog sync outputs and source tracking.
 - `output/`: digest Markdown reports.
 - `logs/`: local runtime logs.
-- selected desktop app workspaces: `app-config.json`, `runs/`, `reports/`, and `logs/` under the user-selected folder.
+- selected desktop app workspaces: `app-config.json`, `runs/`, `reports/`, `logs/`, and `metadata/` under the user-selected folder.
+- Demo Mode: bundled sample data under `app/src/demo/`; it is clearly marked as sample data and does not write real runs or reports.
 
 ## External Services
 - iFlow/OpenAI-compatible AI API via `IFLOW_API_KEY` or CLI argument.

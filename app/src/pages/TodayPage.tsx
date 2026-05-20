@@ -22,9 +22,10 @@ type Props = {
   currentStep: string;
   onNavigate: (route: RouteId) => void;
   onSnapshot: (snapshot: AppSnapshot | ((snapshot: AppSnapshot) => AppSnapshot)) => void;
+  demoMode?: boolean;
 };
 
-export function TodayPage({ config, latestRun, latestReport, runningRun, runLogs, currentStep, onNavigate, onSnapshot }: Props) {
+export function TodayPage({ config, latestRun, latestReport, runningRun, runLogs, currentStep, onNavigate, onSnapshot, demoMode = false }: Props) {
   const configReadiness = getConfigReadiness(config);
   const activeRun = runningRun || latestRun;
   const reportPath = latestReport?.markdownPath || latestRun?.output?.markdownPath;
@@ -50,6 +51,7 @@ export function TodayPage({ config, latestRun, latestReport, runningRun, runLogs
   };
 
   const start = async () => {
+    if (demoMode) return;
     if (
       quickDefaults.language !== config.digestDefaults.language ||
       quickDefaults.timeRangeHours !== config.digestDefaults.timeRangeHours ||
@@ -75,6 +77,16 @@ export function TodayPage({ config, latestRun, latestReport, runningRun, runLogs
 
   const recordFeedback = async (pick: NonNullable<RunRecord["topPicks"]>[number], feedback: "useful" | "not_useful" | "hide_similar") => {
     const itemId = pick.itemId || `${pick.url || pick.title}`;
+    if (demoMode) {
+      onSnapshot((current) => ({
+        ...current,
+        feedback: [
+          { itemId, reportId: latestReport?.id || latestRun?.id || "demo", feedback, createdAt: new Date().toISOString() },
+          ...current.feedback.filter((item) => !(item.itemId === itemId && item.reportId === (latestReport?.id || latestRun?.id || "demo"))),
+        ],
+      }));
+      return;
+    }
     const snapshot = await saveItemFeedback({
       itemId,
       reportId: latestReport?.id || latestRun?.id || "latest",
@@ -98,15 +110,15 @@ export function TodayPage({ config, latestRun, latestReport, runningRun, runLogs
         description="每天为你筛选真正重要的 AI / Agent / Coding / EDA 技术信号。"
         actions={
           <>
-          <button className="primary-action" onClick={start} disabled={!configReadiness.ready || !!runningRun}>
-            {runningRun ? "生成中..." : "生成今日摘要"}
+          <button className="primary-action" onClick={start} disabled={demoMode || !configReadiness.ready || !!runningRun}>
+            {demoMode ? "Demo 样例" : runningRun ? "生成中..." : "生成今日摘要"}
           </button>
           <button className="secondary small-button" onClick={() => onNavigate("settings")}>设置</button>
           </>
         }
       />
 
-      {!configReadiness.ready && (
+      {!demoMode && !configReadiness.ready && (
         <section className="panel warning-panel">
           <strong>基础配置还没有完成，无法生成摘要。</strong>
           <button className="secondary" onClick={() => onNavigate("settings")}>前往设置</button>
@@ -148,7 +160,7 @@ export function TodayPage({ config, latestRun, latestReport, runningRun, runLogs
           <button disabled={!reportPath} onClick={() => reportPath && onNavigate("reports")}>预览完整报告</button>
           <button className="secondary" disabled={!reportPath} onClick={() => reportPath && openPath(reportPath)}>打开文件</button>
           <button className="secondary" disabled={!topPicks.length} onClick={copyTop3}>复制精选</button>
-          <button className="secondary" disabled={!configReadiness.ready || !!runningRun} onClick={start}>重新生成</button>
+          <button className="secondary" disabled={demoMode || !configReadiness.ready || !!runningRun} onClick={start}>重新生成</button>
         </div>
       </section>
 

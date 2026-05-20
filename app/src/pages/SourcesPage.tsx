@@ -10,6 +10,7 @@ type Props = {
   config: AppConfig;
   sourceStats: SourceRunStat[];
   onSnapshot: (snapshot: AppSnapshot) => void;
+  demoMode?: boolean;
 };
 
 type SourceHealth = {
@@ -35,7 +36,7 @@ const emptyDraft = (): NewSourceDraft => ({
   priority: "normal",
 });
 
-export function SourcesPage({ config, sourceStats, onSnapshot }: Props) {
+export function SourcesPage({ config, sourceStats, onSnapshot, demoMode = false }: Props) {
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState<NewSourceDraft>(emptyDraft);
   const [formError, setFormError] = useState("");
@@ -49,6 +50,7 @@ export function SourcesPage({ config, sourceStats, onSnapshot }: Props) {
   }).length;
 
   const toggleSource = async (source: SourceConfig) => {
+    if (demoMode) return;
     const now = new Date().toISOString();
     const next = await saveConfig({
       ...config,
@@ -60,6 +62,10 @@ export function SourcesPage({ config, sourceStats, onSnapshot }: Props) {
   };
 
   const addSource = async () => {
+    if (demoMode) {
+      setFormError("Demo Mode 不会保存真实信息源。清除 Demo 后可添加自己的 RSS。");
+      return;
+    }
     const name = draft.name.trim();
     const url = draft.url.trim();
     if (!name || !url) {
@@ -105,7 +111,7 @@ export function SourcesPage({ config, sourceStats, onSnapshot }: Props) {
         title="Source Quality & Trust"
         description="控制日报的信息源质量，观察每个源最近的抓取、入选和失败情况。"
         actions={
-          <button className="primary-action source-add-button" onClick={() => setAdding((value) => !value)}>
+          <button className="primary-action source-add-button" disabled={demoMode} onClick={() => setAdding((value) => !value)}>
             {adding ? "收起" : "新增信息源"}
           </button>
         }
@@ -224,6 +230,7 @@ export function SourcesPage({ config, sourceStats, onSnapshot }: Props) {
               source={source}
               health={sourceHealth.get(source.id) || getSourceHealth(source, sourceStats)}
               onToggle={() => toggleSource(source)}
+              demoMode={demoMode}
             />
           ))}
         </section>
@@ -232,7 +239,7 @@ export function SourcesPage({ config, sourceStats, onSnapshot }: Props) {
   );
 }
 
-function SourceRow({ source, health, onToggle }: { source: SourceConfig; health: SourceHealth; onToggle: () => void }) {
+function SourceRow({ source, health, onToggle, demoMode }: { source: SourceConfig; health: SourceHealth; onToggle: () => void; demoMode: boolean }) {
   const latest = health.latest;
   const status = getStatusLabel(source, health);
 
@@ -261,7 +268,7 @@ function SourceRow({ source, health, onToggle }: { source: SourceConfig; health:
       </div>
 
       <div className="source-actions">
-        <button className={source.enabled ? "danger-button small-button" : "secondary small-button"} onClick={onToggle}>
+        <button className={source.enabled ? "danger-button small-button" : "secondary small-button"} disabled={demoMode} onClick={onToggle}>
           {source.enabled ? "禁用" : "启用"}
         </button>
         <details>

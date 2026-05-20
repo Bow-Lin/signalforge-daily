@@ -80,6 +80,12 @@
 - Decision: Build and persist failed `RunRecord`s for digest runner preflight failures once a workspace is configured. A startup-missed attempt or skip also consumes the same day's scheduled slot so automatic runs do not repeat unexpectedly.
 - Consequences: Automation failures remain visible through the same local history and error recovery UI as sidecar failures. The scheduler stays single-run-per-day by default, while manual retry remains available to the user.
 
+### 2026-05-20 - Keep v0.4 Release Readiness Local and Unsigned
+- Status: Accepted
+- Context: v0.4 should make SignalForge Daily installable and demoable without adding cloud services, auto-updates, accounts, or signing secrets to the repository.
+- Decision: Standardize app metadata at `v0.4.0`, target Windows installer formats, add local Demo Mode and safe diagnostic copy, and document unsigned installer limitations. Auto-update is represented only as a GitHub Releases link.
+- Consequences: Users can try the app without API credentials and release maintainers have a checklist, but official distribution still needs a signing identity and a stable release machine or CI cache for Tauri bundler dependencies.
+
 ## Template
 
 ### YYYY-MM-DD - Title

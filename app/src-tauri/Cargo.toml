@@ -1,6 +1,6 @@
 [package]
 name = "signalforge-daily"
-version = "0.1.0"
+version = "0.4.0"
 description = "Local-first desktop wrapper for AI daily digest generation"
 authors = ["signalforge_daily contributors"]
 edition = "2021"

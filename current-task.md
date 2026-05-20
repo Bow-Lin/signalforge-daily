@@ -1,39 +1,45 @@
 # Current Task
 
 ## Goal
-Fix v0.3 Automation scheduler blockers found during the commit-main review gate.
+Implement SignalForge Daily v0.4 Packaging & Release readiness.
 
 ## Current Status
-Completed and ready to land through the guarded commit-main workflow. Automatic preflight failures now create failed `RunRecord`s, and startup-missed runs consume the same-day scheduled slot.
+Completed. v0.4 release readiness is implemented with standardized metadata, About diagnostics, Demo Mode, release documentation, and verified build/test checks.
 
-## Scope Completed
-- Added Rust regression tests for failed preflight run records and startup-missed scheduled-slot consumption.
-- Refactored initial digest run record construction into a shared helper.
-- Changed missing API key preflight failures to persist a failed run, emit a failed digest event, and send automation failure notifications when applicable.
-- Changed startup-missed scheduler handling so successful, failed, and skipped startup catch-up attempts also mark the scheduled slot consumed for that date.
-- Added an active-run skip path for startup-missed automation so it records a skip reason instead of trying to start a concurrent digest.
+## Scope
+- Standardize Tauri/app metadata for SignalForge Daily v0.4.0.
+- Add package scripts for dev/build/Tauri/package workflows.
+- Add Settings About / App Info with safe diagnostic copy and log folder access.
+- Add Demo Mode with sample Today, Reports, and Sources data that is clearly marked and can be cleared.
+- Add release documentation: README, privacy, troubleshooting, release checklist, changelog, and smoke test checklist.
 
 ## Out of Scope
-- Live scheduled digest execution with real API credentials.
-- Notification click runtime smoke testing.
-- Broader scheduler redesign or OS login-start integration.
-- Live Tauri runtime smoke testing unless explicitly requested.
+- Research Mode.
+- Paper Collection UX.
+- Cloud sync, accounts, team workflows, or complex search.
+- Full auto-updater implementation.
+- Signing certificates, secrets, or release tokens.
 
-## Validation Commands
+## Validation Plan
+- `cd app && npm run build`: passed.
+- `cd app && npm run sidecar:build`: passed.
 - `cd app/src-tauri && cargo test`: passed.
 - `cd app/src-tauri && cargo check`: passed.
-- `cd app && npm run build`: passed.
 - `uv run python -m pytest -q`: passed.
-- `cd app && npm run sidecar:build`: passed.
+- `cd app && npm run package`: release exe built, installer bundling failed on NSIS helper download timeout.
+- `uv run python -m json.tool .harness/session-state.json`: passed.
+- `git diff --check`: passed.
+- PowerShell equivalent of `scripts/harness_check.sh`: passed.
 
 ## Known Risks
-- Live notification/tray behavior still needs runtime smoke testing in the Tauri shell.
-- Live scheduled generation was not run because it needs user-local provider credentials and schedule timing.
+- Windows installers will be unsigned unless a signing identity is supplied outside the repository.
+- Tauri runtime smoke testing for notifications/tray requires an interactive desktop session.
+- `npm run package` built `app/src-tauri/target/release/signalforge-daily.exe`, but installer bundling failed because Tauri's NSIS helper download timed out.
 
 ## Next 3 Steps
-1. Perform live Tauri smoke testing for automation, notifications, and tray actions.
-2. In the Tauri app, enable automation with a near-future time and verify one scheduled run is created.
-3. Temporarily remove the API key and verify Today shows the failed automatic run with the missing API key recovery card.
+1. Re-run `cd app && npm run package` on a network-stable release machine to produce NSIS/MSI installers.
+2. Run `docs/smoke-test.md` against an installed build.
+3. Prepare GitHub Release notes from `CHANGELOG.md`.
 
 ## Last Updated
 2026-05-20T00:00:00+08:00

@@ -307,6 +307,18 @@ struct AutomationStatus {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppInfo {
+    app_name: String,
+    version: String,
+    build_date: String,
+    platform: String,
+    workspace_path: Option<String>,
+    repository_url: String,
+    logs_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 enum DigestEvent {
     Started { run_id: String, record: RunRecord },
@@ -339,6 +351,8 @@ pub fn run() {
             generate_digest,
             get_automation_status,
             set_automation_paused,
+            get_app_info,
+            open_logs_folder,
             read_markdown,
             open_path,
             reveal_path,
@@ -666,6 +680,27 @@ fn save_item_feedback(feedback: ItemFeedback) -> Result<AppSnapshot, String> {
 #[tauri::command]
 fn get_automation_status() -> Result<AutomationStatus, String> {
     automation_status()
+}
+
+#[tauri::command]
+fn get_app_info() -> Result<AppInfo, String> {
+    let config = load_config()?;
+    Ok(AppInfo {
+        app_name: "SignalForge Daily".to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        build_date: option_env!("SIGNALFORGE_BUILD_DATE").unwrap_or("development").to_string(),
+        platform: format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
+        workspace_path: config.as_ref().map(|value| value.workspace_path.clone()),
+        repository_url: "https://github.com/Bow-Lin/signalforge-daily".to_string(),
+        logs_path: config.as_ref().map(|value| logs_dir(value).to_string_lossy().to_string()),
+    })
+}
+
+#[tauri::command]
+fn open_logs_folder() -> Result<(), String> {
+    let config = load_config()?.ok_or_else(|| "Workspace is not configured".to_string())?;
+    ensure_workspace_dirs(&config)?;
+    opener::open(logs_dir(&config)).map_err(|err| err.to_string())
 }
 
 #[tauri::command]
