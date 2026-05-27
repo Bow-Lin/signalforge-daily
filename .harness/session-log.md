@@ -422,3 +422,28 @@
 - Notes:
   - `bash scripts/harness_check.sh` was not run because Bash is unavailable in this PowerShell session.
   - Installer packaging remains limited by the previously recorded Tauri NSIS helper download timeout; retry on a network-stable release machine.
+
+## 2026-05-27 - Reports History Removal and Delete Fix
+- Goal: Fix Reports history so "从列表移除" does not re-list the same Markdown report as "未记录 条入选", and add confirmed direct deletion.
+- Root cause:
+  - `ReportsPage` called `delete_run`.
+  - `delete_run` removed only the run JSON.
+  - `read_reports` then scanned the configured reports folder and re-added the same Markdown file without run metadata, so selected count showed as `未记录`.
+- Implementation:
+  - Added `metadata/hidden-reports.json` tombstones for non-destructive report-history removals.
+  - Updated `read_reports` to skip hidden Markdown paths from both run-backed and file-scanned reports.
+  - Added a `remove_report_from_history` Tauri command that hides a report and removes the matching run record.
+  - Added a `delete_report` Tauri command that validates the target is a Markdown file under the configured reports folder, deletes the Markdown file, and removes the matching run record.
+  - Updated the Reports page to always offer "从列表移除" and add "删除报告" with a browser confirmation dialog before invoking deletion.
+  - Recorded the tombstone behavior in `docs/decisions.md`.
+- Verification:
+  - `cd app/src-tauri && cargo test report`: failed before implementation because the removal/deletion helpers were missing; passed after implementation.
+  - `cd app/src-tauri && cargo test`: passed, 4 tests.
+  - `cd app/src-tauri && cargo check`: passed.
+  - `cd app && npm run build`: passed. npm still warned about unknown `electron-mirror`; build was unaffected.
+  - `uv run python -m json.tool .harness/session-state.json`: passed.
+  - PowerShell equivalent of `scripts/harness_check.sh`: passed, 18 files present.
+- Notes:
+  - An initial PowerShell harness-equivalent command was malformed and treated shell variables from `scripts/harness_check.sh` as filenames; the corrected explicit file-presence check passed.
+  - `bash scripts/harness_check.sh` was not run because Bash is unavailable in this PowerShell session.
+  - Runtime Tauri UI smoke testing was not run in this session.

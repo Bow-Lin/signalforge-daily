@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { MarkdownPreview } from "../components/MarkdownPreview";
 import { EmptyState, PageHeader, StatusBadge } from "../components/ui";
-import { deleteRun, revealPath } from "../services/bridge";
+import { deleteReport, removeReportFromHistory, revealPath } from "../services/bridge";
 import { formatDateTime } from "../services/format";
 import type { AppSnapshot } from "../types/bridge";
 import type { ReportRecord } from "../types/report";
@@ -16,9 +16,21 @@ export function ReportsPage({ reports, onSnapshot }: Props) {
   const selected = useMemo(() => reports.find((report) => report.id === selectedId) || reports[0], [reports, selectedId]);
 
   const removeFromList = async (report: ReportRecord) => {
-    if (!report.runId) return;
-    const next = await deleteRun(report.runId);
+    const next = await removeReportFromHistory(report);
     onSnapshot(next);
+    if (selected?.id === report.id) {
+      setSelectedId(next.reports[0]?.id || "");
+    }
+  };
+
+  const deleteSelectedReport = async (report: ReportRecord) => {
+    const confirmed = window.confirm(`确定要删除这份报告吗？\n\n${report.title}\n\n该操作会删除本地 Markdown 文件，无法在应用内撤销。`);
+    if (!confirmed) return;
+    const next = await deleteReport(report);
+    onSnapshot(next);
+    if (selected?.id === report.id) {
+      setSelectedId(next.reports[0]?.id || "");
+    }
   };
 
   return (
@@ -48,7 +60,8 @@ export function ReportsPage({ reports, onSnapshot }: Props) {
                 </div>
                 <div className="item-actions">
                   <span onClick={(event) => { event.stopPropagation(); revealPath(report.markdownPath); }}>在文件夹中显示</span>
-                  {report.runId && <span onClick={(event) => { event.stopPropagation(); removeFromList(report); }}>从列表移除</span>}
+                  <span onClick={(event) => { event.stopPropagation(); removeFromList(report); }}>从列表移除</span>
+                  <span className="danger-link" onClick={(event) => { event.stopPropagation(); deleteSelectedReport(report); }}>删除报告</span>
                 </div>
               </button>
             ))

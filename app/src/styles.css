@@ -806,6 +806,10 @@ select {
   font-weight: 800;
 }
 
+.item-actions .danger-link {
+  color: var(--danger-text);
+}
+
 .preview {
   min-height: 640px;
   padding: 18px;

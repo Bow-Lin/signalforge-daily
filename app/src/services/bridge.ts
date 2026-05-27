@@ -60,6 +60,14 @@ export function deleteRun(runId: string): Promise<AppSnapshot> {
   return invoke("delete_run", { runId });
 }
 
+export function removeReportFromHistory(report: { runId?: string; markdownPath: string }): Promise<AppSnapshot> {
+  return invoke("remove_report_from_history", { runId: report.runId || null, markdownPath: report.markdownPath });
+}
+
+export function deleteReport(report: { runId?: string; markdownPath: string }): Promise<AppSnapshot> {
+  return invoke("delete_report", { runId: report.runId || null, markdownPath: report.markdownPath });
+}
+
 export function saveItemFeedback(feedback: ItemFeedback): Promise<AppSnapshot> {
   return invoke("save_item_feedback", { feedback });
 }

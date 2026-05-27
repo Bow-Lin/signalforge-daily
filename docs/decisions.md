@@ -86,6 +86,12 @@
 - Decision: Standardize app metadata at `v0.4.0`, target Windows installer formats, add local Demo Mode and safe diagnostic copy, and document unsigned installer limitations. Auto-update is represented only as a GitHub Releases link.
 - Consequences: Users can try the app without API credentials and release maintainers have a checklist, but official distribution still needs a signing identity and a stable release machine or CI cache for Tauri bundler dependencies.
 
+### 2026-05-27 - Persist Report History Removals as Tombstones
+- Status: Accepted
+- Context: Reports history is assembled from successful run records and Markdown files scanned from the configured reports folder. Deleting only the run record made the same Markdown file reappear as an unlinked report with missing selected-count metadata.
+- Decision: Store removed report paths in `metadata/hidden-reports.json` and have report scanning skip those paths. Direct deletion is a separate confirmed action that deletes the Markdown file and matching run record.
+- Consequences: "Remove from list" is non-destructive and durable across app restarts, while "delete report" performs local file deletion only after UI confirmation. Direct deletion currently removes the Markdown file and matching run record, not generated side outputs.
+
 ## Template
 
 ### YYYY-MM-DD - Title

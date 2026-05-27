@@ -357,6 +357,8 @@ pub fn run() {
             open_path,
             reveal_path,
             delete_run,
+            remove_report_from_history,
+            delete_report,
             save_item_feedback
         ])
         .run(tauri::generate_context!())
@@ -662,6 +664,22 @@ fn delete_run(run_id: String) -> Result<AppSnapshot, String> {
         if path.exists() {
             fs::remove_file(path).map_err(|err| err.to_string())?;
         }
+    }
+    snapshot()
+}
+
+#[tauri::command]
+fn remove_report_from_history(run_id: Option<String>, markdown_path: String) -> Result<AppSnapshot, String> {
+    if let Some(config) = load_config()? {
+        remove_report_from_history_for_config(&config, run_id.as_deref(), Path::new(&markdown_path))?;
+    }
+    snapshot()
+}
+
+#[tauri::command]
+fn delete_report(run_id: Option<String>, markdown_path: String) -> Result<AppSnapshot, String> {
+    if let Some(config) = load_config()? {
+        delete_report_file(&config, run_id.as_deref(), Path::new(&markdown_path))?;
     }
     snapshot()
 }
@@ -1134,13 +1152,14 @@ fn read_runs(config: &AppConfig) -> Result<Vec<RunRecord>, String> {
 
 fn read_reports(config: &AppConfig, runs: &[RunRecord]) -> Result<Vec<ReportRecord>, String> {
     let mut reports: HashMap<String, ReportRecord> = HashMap::new();
+    let hidden_reports = read_hidden_reports(config)?;
     for run in runs {
         let Some(output) = run.output.as_ref() else { continue };
         let Some(markdown_path) = output.markdown_path.as_ref().or(output.report_path.as_ref()) else {
             continue;
         };
         let path = Path::new(markdown_path);
-        if run.status != "success" || !path.exists() {
+        if run.status != "success" || !path.exists() || hidden_reports.contains(&report_history_key(path)) {
             continue;
         }
         let markdown = fs::read_to_string(path).unwrap_or_default();
@@ -1169,7 +1188,7 @@ fn read_reports(config: &AppConfig, runs: &[RunRecord]) -> Result<Vec<ReportReco
                 continue;
             }
             let markdown_path = path.to_string_lossy().to_string();
-            if reports.contains_key(&markdown_path) {
+            if reports.contains_key(&markdown_path) || hidden_reports.contains(&report_history_key(&path)) {
                 continue;
             }
             let markdown = fs::read_to_string(&path).unwrap_or_default();
@@ -1203,6 +1222,49 @@ fn read_reports(config: &AppConfig, runs: &[RunRecord]) -> Result<Vec<ReportReco
 
 fn save_run(config: &AppConfig, record: &RunRecord) -> Result<(), String> {
     write_json(&runs_dir(config).join(format!("{}.json", record.id)), record)
+}
+
+fn remove_report_from_history_for_config(
+    config: &AppConfig,
+    run_id: Option<&str>,
+    markdown_path: &Path,
+) -> Result<(), String> {
+    if let Some(run_id) = run_id.filter(|value| !value.trim().is_empty()) {
+        let run_path = runs_dir(config).join(format!("{}.json", run_id));
+        if run_path.exists() {
+            fs::remove_file(run_path).map_err(|err| err.to_string())?;
+        }
+    }
+
+    let mut hidden_reports = read_hidden_reports(config)?;
+    let key = report_history_key(markdown_path);
+    if !hidden_reports.iter().any(|value| value == &key) {
+        hidden_reports.push(key);
+        hidden_reports.sort();
+        write_hidden_reports(config, &hidden_reports)?;
+    }
+    Ok(())
+}
+
+fn delete_report_file(
+    config: &AppConfig,
+    run_id: Option<&str>,
+    markdown_path: &Path,
+) -> Result<(), String> {
+    let report_path = validate_report_delete_path(config, markdown_path)?;
+    if report_path.exists() {
+        fs::remove_file(&report_path).map_err(|err| err.to_string())?;
+    }
+    if let Some(run_id) = run_id.filter(|value| !value.trim().is_empty()) {
+        let run_path = runs_dir(config).join(format!("{}.json", run_id));
+        if run_path.exists() {
+            fs::remove_file(run_path).map_err(|err| err.to_string())?;
+        }
+    }
+    let mut hidden_reports = read_hidden_reports(config)?;
+    let key = report_history_key(&report_path);
+    hidden_reports.retain(|value| value != &key);
+    write_hidden_reports(config, &hidden_reports)
 }
 
 fn setup_tray(app: &mut tauri::App) -> tauri::Result<()> {
@@ -1453,6 +1515,39 @@ fn read_feedback(config: &AppConfig) -> Result<Vec<ItemFeedback>, String> {
     read_json(&path)
 }
 
+fn read_hidden_reports(config: &AppConfig) -> Result<Vec<String>, String> {
+    let path = hidden_reports_path(config);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    read_json(&path)
+}
+
+fn write_hidden_reports(config: &AppConfig, hidden_reports: &[String]) -> Result<(), String> {
+    write_json(&hidden_reports_path(config), &hidden_reports.to_vec())
+}
+
+fn report_history_key(path: &Path) -> String {
+    path.canonicalize()
+        .unwrap_or_else(|_| path.to_path_buf())
+        .to_string_lossy()
+        .to_string()
+}
+
+fn validate_report_delete_path(config: &AppConfig, markdown_path: &Path) -> Result<PathBuf, String> {
+    if markdown_path.extension().and_then(|value| value.to_str()) != Some("md") {
+        return Err("Only Markdown reports can be deleted.".to_string());
+    }
+    let report_path = markdown_path.canonicalize().map_err(|err| err.to_string())?;
+    let output_dir = Path::new(&config.output_path)
+        .canonicalize()
+        .map_err(|err| err.to_string())?;
+    if !report_path.starts_with(output_dir) {
+        return Err("Report is outside the configured reports folder.".to_string());
+    }
+    Ok(report_path)
+}
+
 fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, String> {
     let raw = fs::read_to_string(path).map_err(|err| err.to_string())?;
     serde_json::from_str(&raw).map_err(|err| err.to_string())
@@ -1491,6 +1586,10 @@ fn source_stats_path(config: &AppConfig) -> PathBuf {
 
 fn feedback_path(config: &AppConfig) -> PathBuf {
     metadata_dir(config).join("item-feedback.json")
+}
+
+fn hidden_reports_path(config: &AppConfig) -> PathBuf {
+    metadata_dir(config).join("hidden-reports.json")
 }
 
 fn automation_state_path(config: &AppConfig) -> PathBuf {
@@ -1805,6 +1904,7 @@ fn digest_error(kind: &str, message: &str, raw: &str, actions: &[&str]) -> Diges
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn test_config() -> AppConfig {
         let workspace_path = std::env::temp_dir()
@@ -1844,6 +1944,59 @@ mod tests {
         }
     }
 
+    fn test_config_with_workspace(name: &str) -> AppConfig {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let workspace_path = std::env::temp_dir()
+            .join(format!("signalforge-daily-{name}-{suffix}"))
+            .to_string_lossy()
+            .to_string();
+        let mut config = test_config();
+        config.workspace_path = workspace_path.clone();
+        config.output_path = Path::new(&workspace_path)
+            .join("reports")
+            .to_string_lossy()
+            .to_string();
+        config
+    }
+
+    fn successful_run_for_report(config: &AppConfig, run_id: &str, markdown_path: &Path) -> RunRecord {
+        RunRecord {
+            id: run_id.to_string(),
+            run_type: "digest".to_string(),
+            status: "success".to_string(),
+            trigger: "manual".to_string(),
+            started_at: "2026-05-27T00:00:00Z".to_string(),
+            finished_at: Some("2026-05-27T00:01:00Z".to_string()),
+            duration_ms: Some(60_000),
+            params_snapshot: ParamsSnapshot {
+                language: "zh".to_string(),
+                time_range_hours: 24,
+                top_n: 6,
+                output_path: config.output_path.clone(),
+                model: "gpt-test".to_string(),
+            },
+            stats: Some(RunStats {
+                sources_scanned: Some(3),
+                articles_fetched: Some(12),
+                articles_selected: Some(6),
+            }),
+            output: Some(RunOutput {
+                report_path: None,
+                markdown_path: Some(markdown_path.to_string_lossy().to_string()),
+                html_path: None,
+                json_path: None,
+                log_path: None,
+            }),
+            top_picks: None,
+            source_run_stats: None,
+            warnings: None,
+            error: None,
+        }
+    }
+
     #[test]
     fn preflight_failure_run_record_is_failed_with_trigger_and_error() {
         let config = test_config();
@@ -1870,5 +2023,43 @@ mod tests {
         assert_eq!(state.last_startup_missed_date.as_deref(), Some("2026-05-20"));
         assert_eq!(state.last_scheduled_date.as_deref(), Some("2026-05-20"));
         assert!(state.last_skip_reason.is_none());
+    }
+
+    #[test]
+    fn removing_report_from_history_keeps_markdown_file_hidden() {
+        let config = test_config_with_workspace("hide-report");
+        ensure_workspace_dirs(&config).unwrap();
+        let markdown_path = Path::new(&config.output_path).join("digest-20260527.md");
+        fs::write(&markdown_path, "# Daily Digest\n\n- item").unwrap();
+        let run = successful_run_for_report(&config, "run-hide-report", &markdown_path);
+        save_run(&config, &run).unwrap();
+
+        remove_report_from_history_for_config(&config, Some(&run.id), &markdown_path).unwrap();
+
+        let runs = read_runs(&config).unwrap();
+        let reports = read_reports(&config, &runs).unwrap();
+
+        assert!(markdown_path.exists());
+        assert!(runs.is_empty());
+        assert!(reports.is_empty());
+    }
+
+    #[test]
+    fn deleting_report_removes_markdown_file_and_matching_run() {
+        let config = test_config_with_workspace("delete-report");
+        ensure_workspace_dirs(&config).unwrap();
+        let markdown_path = Path::new(&config.output_path).join("digest-20260527.md");
+        fs::write(&markdown_path, "# Daily Digest\n\n- item").unwrap();
+        let run = successful_run_for_report(&config, "run-delete-report", &markdown_path);
+        save_run(&config, &run).unwrap();
+
+        delete_report_file(&config, Some(&run.id), &markdown_path).unwrap();
+
+        let runs = read_runs(&config).unwrap();
+        let reports = read_reports(&config, &runs).unwrap();
+
+        assert!(!markdown_path.exists());
+        assert!(runs.is_empty());
+        assert!(reports.is_empty());
     }
 }

@@ -1,89 +1,60 @@
 {
-  "task_id": "v0.4-packaging-release-2026-05-20",
+  "task_id": "reports-history-delete-fix-2026-05-27",
   "status": "completed",
   "current_phase": "handoff_ready",
-  "last_updated": "2026-05-20T00:00:00+08:00",
+  "last_updated": "2026-05-27T00:00:00+08:00",
   "active_plan": [
-    "Completed: inspected Tauri metadata, scripts, Settings, bridge, report preview, and snapshot data flow.",
-    "Completed: implemented v0.4 metadata, About diagnostics, and Demo Mode.",
-    "Completed: added release documentation and smoke checklist.",
-    "Completed: ran verification and recorded packaging limitation."
+    "Completed: identified root cause in run deletion plus outputPath Markdown scanning.",
+    "Completed: added failing Rust regression tests for hidden removed reports and direct Markdown report deletion.",
+    "Completed: implemented persisted report removal tombstones plus a delete_report command.",
+    "Completed: wired the renderer bridge and Reports page actions with confirmation before direct delete.",
+    "Completed: ran focused and standard verification."
   ],
   "next_3_steps": [
-    "Re-run cd app && npm run package on a network-stable release machine to produce NSIS/MSI installers.",
-    "Run docs/smoke-test.md against an installed build.",
-    "Prepare GitHub Release notes from CHANGELOG.md."
+    "Optionally run cd app && npm run tauri:dev and smoke test Reports remove/delete in the desktop shell.",
+    "If side outputs should also be deleted, define the expected file cleanup policy before implementation.",
+    "Continue with normal app release QA."
   ],
   "changed_files": [
-    "CHANGELOG.md",
     "current-task.md",
-    ".harness/session-state.json",
-    ".harness/session-log.md",
-    "README.md",
-    "app/package.json",
-    "app/package-lock.json",
-    "app/src-tauri/Cargo.toml",
-    "app/src-tauri/Cargo.lock",
-    "app/src-tauri/build.rs",
-    "app/src-tauri/tauri.conf.json",
     "app/src-tauri/src/lib.rs",
-    "app/src/app/App.tsx",
-    "app/src/components/MarkdownPreview.tsx",
-    "app/src/demo/sampleData.ts",
-    "app/src/pages/SettingsPage.tsx",
-    "app/src/pages/SetupPage.tsx",
-    "app/src/pages/SourcesPage.tsx",
-    "app/src/pages/TodayPage.tsx",
+    "app/src/pages/ReportsPage.tsx",
     "app/src/services/bridge.ts",
-    "app/src/styles.css",
     "app/src/types/bridge.ts",
-    "app/src/types/report.ts",
-    "docs/architecture.md",
+    "app/src/styles.css",
     "docs/decisions.md",
-    "docs/error-journal.md",
-    "docs/privacy.md",
-    "docs/release-checklist.md",
-    "docs/smoke-test.md",
-    "docs/troubleshooting.md",
-    "docs/verification.md"
+    ".harness/session-state.json",
+    ".harness/session-log.md"
   ],
   "validation": {
     "last_commands": [
-      "cd app && npm install",
-      "cd app && npm run build",
-      "cd app/src-tauri && cargo check",
+      "cd app/src-tauri && cargo test report",
       "cd app/src-tauri && cargo test",
-      "cd app && npm run sidecar:build",
-      "uv run python -m pytest -q",
-      "cd app && npm run package",
+      "cd app/src-tauri && cargo check",
+      "cd app && npm run build",
       "uv run python -m json.tool .harness/session-state.json",
-      "git diff --check",
       "PowerShell equivalent of scripts/harness_check.sh"
     ],
-    "last_result": "Build, tests, sidecar build, JSON validation, diff check, and harness file-presence check passed. Packaging built the release exe but installer bundling failed on Tauri NSIS helper download timeout.",
+    "last_result": "Focused Rust report tests passed after the expected red failure, full Rust tests passed, cargo check passed, app build passed, JSON validation passed, and PowerShell harness file-presence check passed.",
     "known_failures": [
-      "Windows installers will be unsigned unless signing credentials are supplied outside the repository.",
-      "Interactive notification/tray smoke testing requires a desktop runtime session.",
-      "npm run package failed to produce NSIS/MSI installers because downloading nsis_tauri_utils.dll timed out; release exe exists at app/src-tauri/target/release/signalforge-daily.exe."
+      "bash scripts/harness_check.sh was not run because Bash is unavailable in this PowerShell session.",
+      "Runtime Tauri UI smoke testing was not run in this session."
     ]
   },
   "cognitive_state": {
     "failure_count": 0,
-    "current_mode": "v0.4_packaging_release",
+    "current_mode": "reports_history_bugfix",
     "tried_approaches": [
       "Harness context restoration",
-      "Tauri metadata inspection",
-      "Settings and snapshot data-flow inspection",
-      "Metadata/package script updates",
-      "About diagnostics",
-      "Demo Mode sample data",
-      "Release documentation",
-      "Build and packaging verification"
+      "Systematic debugging",
+      "Reports page and Tauri report scanner inspection",
+      "Test-driven backend regression coverage",
+      "Renderer bridge and Reports page update"
     ],
     "blocked_on": null
   },
   "handoff": {
-    "last_summary": "Completed v0.4 Packaging & Release readiness implementation; installer bundling needs retry on a network-stable release machine.",
-    "resume_from": "Re-run npm run package to produce NSIS/MSI installers, then perform the manual smoke checklist."
+    "last_summary": "Completed Reports history removal and direct delete fix.",
+    "resume_from": "Run desktop shell smoke testing for Reports remove/delete if interactive QA is desired."
   }
 }
