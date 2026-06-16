@@ -92,6 +92,18 @@
 - Decision: Store removed report paths in `metadata/hidden-reports.json` and have report scanning skip those paths. Direct deletion is a separate confirmed action that deletes the Markdown file and matching run record.
 - Consequences: "Remove from list" is non-destructive and durable across app restarts, while "delete report" performs local file deletion only after UI confirmation. Direct deletion currently removes the Markdown file and matching run record, not generated side outputs.
 
+### 2026-05-27 - Treat Quiet Feeds as Successful
+- Status: Accepted
+- Context: RSS fetches can succeed while returning no articles in the requested time window, especially for low-frequency sources such as official developer blogs. The previous accounting reported those as `empty feed` failures.
+- Decision: Count a feed as successful when its request and parsing complete without exception, even if it contributes zero in-window articles. Keep HTTP, TLS, timeout, and parser exceptions as failed sources.
+- Consequences: Source warnings now focus on actionable fetch failures. Undated feeds still produce no articles because assigning synthetic dates would repeatedly surface stale content.
+
+### 2026-06-16 - Keep Frequent Desktop Actions Local and Immediate
+- Status: Accepted
+- Context: Today, Reports, Sources, and Settings had useful actions, but several high-frequency flows required repeated expansion, lacked feedback, or lost page context across reloads.
+- Decision: Keep common Today actions visible in the header, store lightweight UI state in renderer `localStorage`, and use a shared renderer toast for successful actions and safe undo. Keep destructive report file deletion as confirmation-only with no undo, while non-destructive history removal can undo by restoring the hidden-report tombstone.
+- Consequences: Users can jump to the latest report, copy picks, regenerate, reopen prior page state, and recover from accidental local changes faster. Full runtime validation still belongs in the Tauri shell because the plain Vite renderer lacks Tauri `invoke` and event APIs.
+
 ## Template
 
 ### YYYY-MM-DD - Title

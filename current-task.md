@@ -1,39 +1,41 @@
 # Current Task
 
 ## Goal
-Fix Reports history removal so removed reports stay hidden, and add confirmed report deletion.
+Reduce repeated clicks in the desktop app by streamlining common actions, adding action feedback, remembering page state, and supporting keyboard shortcuts.
 
 ## Current Status
-Completed. Report history removals now persist a hidden-report tombstone, and direct report deletion requires confirmation before deleting the Markdown file.
+Completed. Common Today, Reports, Sources, Settings, and feedback actions now require fewer repeated clicks and give visible feedback.
 
 ## Scope
-- Persist report-history removals so Markdown files are not re-listed after the associated run is removed.
-- Add a direct delete action for reports.
-- Require a confirmation dialog before direct deletion.
-- Keep report deletion scoped to the selected Markdown report and its local run record.
+- Keep high-frequency Today actions visible: view latest report, copy selected picks, and regenerate.
+- After manual generation succeeds, keep/focus Today on the latest result and show a toast action to view the full report; after failure, focus the recovery card.
+- Add unified toast feedback with undo where local state can be safely reversed.
+- Remember last route, selected report, and key collapsed/expanded UI state.
+- Add keyboard shortcuts for regenerate, open latest report, settings, and Sources search focus.
 
 ## Out of Scope
-- Bulk delete or undo.
-- Changing digest generation behavior.
-- Deleting generated HTML/JSON side outputs.
-- Runtime installer or packaging changes.
+- Python digest algorithm changes.
+- Tauri persistence schema changes unless required for undo safety.
+- Browser visual QA if no runnable Tauri renderer is available.
 
 ## Validation Plan
-- `cd app/src-tauri && cargo test report`: failed before implementation because removal/deletion helpers were missing; passed after implementation.
-- `cd app/src-tauri && cargo test`: passed, 4 tests.
-- `cd app/src-tauri && cargo check`: passed.
+- Focused TypeScript UI helper test: failed before implementation because `uiState` helper was missing; passed after implementation.
 - `cd app && npm run build`: passed.
+- `cd app/src-tauri && cargo check`: passed.
+- `cd app/src-tauri && cargo test`: passed, 5 tests.
 - `uv run python -m json.tool .harness/session-state.json`: passed.
-- PowerShell equivalent of `scripts/harness_check.sh`: passed, 18 files present.
+- PowerShell equivalent of `scripts/harness_check.sh`: passed.
+- Browser smoke via Vite: reached Setup and Demo Mode, verified top Today actions and `/` Sources search focus; full Tauri bridge flows require Tauri shell because plain Vite lacks `window.__TAURI__`.
 
 ## Known Risks
-- Runtime Tauri UI smoke was not run in this session; behavior is covered by Rust tests and TypeScript build.
-- Direct deletion intentionally deletes only the Markdown report file and matching run record, not possible HTML/JSON side outputs.
+- Runtime-only interactions such as scrolling/focus are best verified in the Tauri shell; build can only verify integration statically.
+- Undo for destructive physical file deletion remains out of scope; direct delete already warns that it cannot be undone.
+- "从列表移除" is now non-destructive and keeps run metadata so undo can restore the full report card.
 
 ## Next 3 Steps
-1. Optionally run `cd app && npm run tauri:dev` and smoke test Reports remove/delete in the desktop shell.
-2. If side outputs should also be deleted, define the expected file cleanup policy before implementation.
-3. Continue with normal app release QA.
+1. Run `cd app && npm run tauri:dev` and smoke test real Tauri actions: manual generation completion toast, Reports undo, feedback undo, Settings undo.
+2. Consider adding renderer component tests if a React test runner is introduced.
+3. If users need cleanup of old run JSON after non-destructive report removal, define a separate compaction policy instead of coupling it to UI removal.
 
 ## Last Updated
-2026-05-27T00:00:00+08:00
+2026-06-16T00:00:00+08:00

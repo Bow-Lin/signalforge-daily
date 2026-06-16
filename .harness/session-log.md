@@ -447,3 +447,58 @@
   - An initial PowerShell harness-equivalent command was malformed and treated shell variables from `scripts/harness_check.sh` as filenames; the corrected explicit file-presence check passed.
   - `bash scripts/harness_check.sh` was not run because Bash is unavailable in this PowerShell session.
   - Runtime Tauri UI smoke testing was not run in this session.
+
+## 2026-05-27 - RSS Source Error Diagnostics
+- Goal: Diagnose and reduce noisy source errors for OpenAI Developers Blog, blog.pixelmelt.dev, chadnauseam.com, paulgraham.com, rachelbythebay.com, and tedunangst.com.
+- Root cause:
+  - OpenAI Developers Blog was reachable and exposed `https://developers.openai.com/rss.xml`, but had no posts in the 24-hour test window; this was incorrectly counted as an empty-feed failure.
+  - `chadnauseam.com/rss.xml` and the Paul Graham aaronsw feed were reachable, but their items omit publication dates, so the parser intentionally produced no dated articles.
+  - `blog.pixelmelt.dev` returned Cloudflare HTTP 530 for the feed and tested fallback URLs.
+  - `rachelbythebay.com` and `tedunangst.com` timed out or failed TLS/connection checks from this environment.
+- Implementation:
+  - Changed `fetch_all_feeds` so successful fetches with zero in-window articles count as successful, not failed.
+  - Added regression tests for successful empty fetches and fetch exceptions.
+  - Removed the currently unreachable `blog.pixelmelt.dev`, `rachelbythebay.com`, and `tedunangst.com` feeds from the default source list.
+  - Recorded the source-health failure in `docs/error-journal.md` and the quiet-feed accounting decision in `docs/decisions.md`.
+- Verification:
+  - `uv run python -m pytest -q tests/test_digest.py::test_fetch_all_feeds_treats_empty_successful_fetch_as_success`: failed before implementation, then passed.
+  - `uv run python -m pytest -q tests/test_digest.py::test_fetch_all_feeds_treats_empty_successful_fetch_as_success tests/test_digest.py::test_fetch_all_feeds_keeps_fetch_exceptions_as_failures`: passed.
+  - `uv run python -m pytest -q tests/test_digest.py`: passed, 13 tests.
+  - `uv run python -m pytest -q`: passed, 13 tests.
+  - `uv run python -m signalforge_daily.digest_cli --help`: passed.
+  - `uv run python -m json.tool .harness/session-state.json`: passed.
+  - Default source check confirmed `blog.pixelmelt.dev`, `rachelbythebay.com`, and `tedunangst.com` are absent, while OpenAI Developers Blog, chadnauseam.com, and paulgraham.com remain present.
+- Notes:
+  - Existing desktop workspaces with persisted source configs may still contain removed default sources; disable them from the Sources page if they remain visible.
+  - No live AI digest generation was run because this was a feed-fetch accounting/source-health change and API credentials are user-local.
+
+## 2026-06-16 - Desktop UX Click Reduction
+- Goal: Reduce repeated clicks for common desktop app actions by adding visible high-frequency actions, toast feedback, undo, shortcuts, and remembered page state.
+- Context restored:
+  - Previous RSS source diagnostics task was complete but its files remained dirty in the worktree.
+  - Current UX work was scoped to `app/src`, `app/src-tauri/src/lib.rs`, and harness/docs updates.
+- Implementation:
+  - Added `app/src/services/uiState.ts` plus focused tests for UI state persistence and keyboard shortcut mapping.
+  - Persisted last route, selected report, Today quick-settings expansion, and Settings network/advanced expansion in renderer `localStorage`.
+  - Added a shared `ToastHost` for action feedback and safe undo.
+  - Promoted Today high-frequency actions into the page header: view latest report, copy picks, regenerate, and settings.
+  - Added manual generation completion/failure handling: successful manual runs return/focus Today latest result and show a "view full report" toast; failed manual runs focus the recovery card.
+  - Added shortcuts: Ctrl/Cmd+R regenerate, Ctrl/Cmd+O reports, Ctrl/Cmd+, settings, and `/` Sources search focus.
+  - Added Sources search/filter and focus behavior.
+  - Added undo for Settings save, source enable/disable, adding a source, report history removal, and item feedback.
+  - Added Tauri commands for restoring hidden report history and deleting item feedback.
+  - During the commit-main review gate, found and fixed a P2 undo issue: report-history removal previously deleted the run JSON, so undo could restore visibility but not full run-backed metadata.
+  - Changed report-history removal to be non-destructive for run records and added a Rust regression test that restoration keeps selected-count metadata.
+  - Recorded the local/immediate action decision in `docs/decisions.md` and the plain-Vite Tauri bridge QA limitation in `docs/error-journal.md`.
+- Verification:
+  - Focused TypeScript UI helper test failed before implementation because `uiState` helper was missing; passed after implementation.
+  - `cd app && npm run build`: passed.
+  - `cd app/src-tauri && cargo check`: passed.
+  - `cd app/src-tauri && cargo test`: passed, 5 tests after the report-history undo regression was added.
+  - `uv run python -m json.tool .harness/session-state.json`: passed.
+  - PowerShell equivalent of `scripts/harness_check.sh`: passed.
+  - Browser smoke via Vite reached Setup and Demo Mode; verified Today header actions are visible and `/` focuses Sources search.
+- Notes:
+  - Browser smoke in plain Vite logs expected Tauri bridge errors outside Demo Mode because `window.__TAURI__` is unavailable.
+  - Full runtime QA for real digest generation, Reports undo, Settings undo, and feedback undo should run in `npm run tauri:dev`.
+  - Direct Markdown report deletion remains non-undoable by design.

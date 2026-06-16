@@ -63,3 +63,38 @@ export function ErrorState({ title, description, action }: EmptyStateProps) {
     </section>
   );
 }
+
+export type ToastItem = {
+  id: string;
+  title: string;
+  description?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+};
+
+export function ToastHost({ toasts, onDismiss }: { toasts: ToastItem[]; onDismiss: (id: string) => void }) {
+  if (toasts.length === 0) return null;
+
+  return (
+    <div className="toast-host" role="status" aria-live="polite">
+      {toasts.map((toast) => (
+        <div className="toast" key={toast.id}>
+          <div>
+            <strong>{toast.title}</strong>
+            {toast.description && <span>{toast.description}</span>}
+          </div>
+          <div className="toast-actions">
+            {toast.actionLabel && toast.onAction && (
+              <button className="ghost-action small-button" onClick={toast.onAction}>
+                {toast.actionLabel}
+              </button>
+            )}
+            <button className="secondary small-button" onClick={() => onDismiss(toast.id)} aria-label="关闭提示">
+              关闭
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}

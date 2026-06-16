@@ -2,20 +2,25 @@ import { useEffect, useState } from "react";
 import { chooseFolder, generateDigest, getAutomationStatus, saveConfig, setAutomationPaused, testConnection } from "../services/bridge";
 import { getConfigReadiness } from "../services/configReadiness";
 import { ensureNotificationPermission, getNotificationPermission, notify, type NotificationPermissionState } from "../services/notificationService";
+import type { ToastItem } from "./ui";
 import type { AppSnapshot, AutomationStatus } from "../types/bridge";
 import { defaultConfig, type AppConfig } from "../types/config";
+import type { UiState } from "../services/uiState";
 
 type Props = {
   config: AppConfig | null;
   onSaved: (snapshot: AppSnapshot) => void;
   compact?: boolean;
+  uiState?: UiState;
+  onUiStateChange?: (patch: Partial<UiState>) => void;
+  onToast?: (toast: Omit<ToastItem, "id">) => string;
 };
 
-export function SettingsForm({ config, onSaved, compact = false }: Props) {
+export function SettingsForm({ config, onSaved, compact = false, uiState, onUiStateChange, onToast }: Props) {
   const [draft, setDraft] = useState<AppConfig>(config || defaultConfig());
   const [showKey, setShowKey] = useState(false);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [networkOpen, setNetworkOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(uiState?.settingsAdvancedOpen ?? false);
+  const [networkOpen, setNetworkOpen] = useState(uiState?.settingsNetworkOpen ?? false);
   const [message, setMessage] = useState("");
   const [testMessage, setTestMessage] = useState("");
   const [testOk, setTestOk] = useState(false);
@@ -58,10 +63,23 @@ export function SettingsForm({ config, onSaved, compact = false }: Props) {
 
   const save = async () => {
     try {
+      const previousConfig = config;
       const next = await saveConfig(draft);
       setMessage(compact ? "配置已保存，正在进入 Today。" : "配置已保存。");
       onSaved(next);
       getAutomationStatus().then(setAutomationStatus).catch(() => setAutomationStatus(null));
+      onToast?.({
+        title: "设置已保存",
+        description: compact ? "可以开始生成摘要。" : "本地配置已更新。",
+        actionLabel: previousConfig ? "撤销" : undefined,
+        onAction: previousConfig
+          ? async () => {
+              const restored = await saveConfig(previousConfig);
+              setDraft(restored.config || previousConfig);
+              onSaved(restored);
+            }
+          : undefined,
+      });
     } catch (err) {
       setMessage(err instanceof Error ? err.message : String(err));
     }
@@ -299,7 +317,14 @@ export function SettingsForm({ config, onSaved, compact = false }: Props) {
         </section>
       )}
 
-      <details className="panel settings-details" open={networkOpen} onToggle={(event) => setNetworkOpen(event.currentTarget.open)}>
+      <details
+        className="panel settings-details"
+        open={networkOpen}
+        onToggle={(event) => {
+          setNetworkOpen(event.currentTarget.open);
+          onUiStateChange?.({ settingsNetworkOpen: event.currentTarget.open });
+        }}
+      >
         <summary>网络</summary>
         <label>
           代理模式
@@ -324,7 +349,14 @@ export function SettingsForm({ config, onSaved, compact = false }: Props) {
       </details>
 
       {!compact && (
-        <details className="panel settings-details" open={advancedOpen} onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}>
+        <details
+          className="panel settings-details"
+          open={advancedOpen}
+          onToggle={(event) => {
+            setAdvancedOpen(event.currentTarget.open);
+            onUiStateChange?.({ settingsAdvancedOpen: event.currentTarget.open });
+          }}
+        >
           <summary>高级</summary>
           {advancedOpen && (
             <div className="field-grid">

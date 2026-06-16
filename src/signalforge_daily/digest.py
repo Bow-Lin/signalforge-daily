@@ -735,12 +735,13 @@ def fetch_all_feeds(
                 failures[feed.name] = reason
                 logger.warning("[digest] ✗ %s: %s", feed.name, reason)
                 items = []
+                fetch_succeeded = False
+            else:
+                fetch_succeeded = True
 
-            if items:
+            if fetch_succeeded:
                 success_feeds += 1
                 all_articles.extend(items)
-            else:
-                failures.setdefault(feed.name, failures.get(feed.name, "empty feed"))
 
             finished = datetime.now(timezone.utc)
             failed_reason = failures.get(feed.name)
@@ -768,14 +769,14 @@ def fetch_all_feeds(
                 processed,
                 total,
                 success_feeds,
-                processed - success_feeds,
+                len(failures),
             )
 
     deduped = _dedupe_articles(all_articles)
     stats = FetchStats(
         total_feeds=len(feeds),
         success_feeds=success_feeds,
-        failed_feeds=len(feeds) - success_feeds,
+        failed_feeds=len(failures),
         total_articles=len(deduped),
         failures=failures,
         source_stats=source_stats,

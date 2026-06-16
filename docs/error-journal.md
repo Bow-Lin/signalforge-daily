@@ -38,6 +38,22 @@
 - Workaround: Re-run `cd app && npm run package` on a network-stable machine or pre-cache Tauri NSIS/WiX bundler dependencies. Installer signing still requires external credentials and is not stored in the repo.
 - Follow-up: Add CI or a release machine with cached bundler dependencies for repeatable installer builds.
 
+### 2026-05-27 - Default RSS source failures
+- Area: Digest RSS source health
+- Symptom: Several default sources were reported as failures: OpenAI Developers Blog, blog.pixelmelt.dev, chadnauseam.com, paulgraham.com, rachelbythebay.com, and tedunangst.com.
+- Impact: Successful digest runs could show noisy source warnings, including `empty feed` for sources that fetched successfully but had no dated articles in the requested time window.
+- Root Cause: `fetch_all_feeds` treated any successful fetch returning zero in-window articles as `empty feed`. Separately, `blog.pixelmelt.dev` returned Cloudflare HTTP 530, while `rachelbythebay.com` and `tedunangst.com` timed out or failed TLS from this environment. Chad Nauseam and the Paul Graham aaronsw feed are reachable but omit item dates, so they produce no dated articles.
+- Workaround: Successful empty fetches now count as successful sources, and the currently unreachable `blog.pixelmelt.dev`, `rachelbythebay.com`, and `tedunangst.com` feeds were removed from the default list.
+- Follow-up: Existing user workspaces with persisted source configs may still need these sources disabled manually from the Sources page.
+
+### 2026-06-16 - Plain Vite renderer lacks Tauri bridge
+- Area: Desktop renderer QA
+- Symptom: Opening `http://127.0.0.1:5173` in a normal browser renders Setup/Demo UI, but console logs show Tauri `invoke`/`listen` failures such as missing `transformCallback` or `invoke`.
+- Impact: Browser smoke can verify static renderer layout, Demo Mode, and local UI state interactions, but cannot fully validate real workspace, report, notification, or digest runner commands.
+- Root Cause: The React renderer expects Tauri runtime globals when not in Demo Mode; Vite alone does not provide `window.__TAURI__` command and event bridges.
+- Workaround: Use `cd app && npm run tauri:dev` for full runtime QA. Use plain Vite only for limited renderer smoke tests, preferably Demo Mode interactions.
+- Follow-up: Consider adding a browser-only mock bridge if routine renderer QA outside Tauri becomes important.
+
 ## Template
 
 ### YYYY-MM-DD - Title

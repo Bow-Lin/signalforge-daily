@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { SettingsForm } from "../components/SettingsForm";
-import { PageHeader } from "../components/ui";
+import { PageHeader, type ToastItem } from "../components/ui";
 import { copyText, getAppInfo, openLogsFolder, openPath } from "../services/bridge";
 import type { AppInfo, AppSnapshot } from "../types/bridge";
 import type { AppConfig } from "../types/config";
+import type { UiState } from "../services/uiState";
 
 type Props = {
   config: AppConfig;
@@ -11,9 +12,12 @@ type Props = {
   onSaved: (snapshot: AppSnapshot) => void;
   demoMode?: boolean;
   onClearDemo?: () => void;
+  uiState: UiState;
+  onUiStateChange: (patch: Partial<UiState>) => void;
+  onToast: (toast: Omit<ToastItem, "id">) => string;
 };
 
-export function SettingsPage({ config, snapshot, onSaved, demoMode = false, onClearDemo }: Props) {
+export function SettingsPage({ config, snapshot, onSaved, demoMode = false, onClearDemo, uiState, onUiStateChange, onToast }: Props) {
   return (
     <div className="page">
       <PageHeader
@@ -30,7 +34,7 @@ export function SettingsPage({ config, snapshot, onSaved, demoMode = false, onCl
           <button className="secondary" onClick={onClearDemo}>清除 Demo 数据</button>
         </section>
       ) : (
-        <SettingsForm config={config} onSaved={onSaved} />
+        <SettingsForm config={config} onSaved={onSaved} uiState={uiState} onUiStateChange={onUiStateChange} onToast={onToast} />
       )}
       <AboutPanel config={config} snapshot={snapshot} demoMode={demoMode} />
     </div>

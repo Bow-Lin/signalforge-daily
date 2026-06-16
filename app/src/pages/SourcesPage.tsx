@@ -1,16 +1,18 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { saveConfig } from "../services/bridge";
 import { formatDateTime } from "../services/format";
 import type { AppSnapshot } from "../types/bridge";
 import type { AppConfig, SourceConfig, SourcePriority, SourceType } from "../types/config";
 import type { SourceRunStat } from "../types/run";
-import { EmptyState, PageHeader, StatusBadge } from "../components/ui";
+import { EmptyState, PageHeader, StatusBadge, type ToastItem } from "../components/ui";
 
 type Props = {
   config: AppConfig;
   sourceStats: SourceRunStat[];
   onSnapshot: (snapshot: AppSnapshot) => void;
   demoMode?: boolean;
+  searchFocusNonce?: number;
+  onToast: (toast: Omit<ToastItem, "id">) => string;
 };
 
 type SourceHealth = {
@@ -36,10 +38,12 @@ const emptyDraft = (): NewSourceDraft => ({
   priority: "normal",
 });
 
-export function SourcesPage({ config, sourceStats, onSnapshot, demoMode = false }: Props) {
+export function SourcesPage({ config, sourceStats, onSnapshot, demoMode = false, searchFocusNonce = 0, onToast }: Props) {
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState<NewSourceDraft>(emptyDraft);
   const [formError, setFormError] = useState("");
+  const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
   const sourceHealth = new Map(config.sources.map((source) => [source.id, getSourceHealth(source, sourceStats)]));
   const enabledCount = config.sources.filter((source) => source.enabled).length;
   const noisySources = config.sources.filter((source) => sourceHealth.get(source.id)?.noisy);
@@ -48,9 +52,15 @@ export function SourcesPage({ config, sourceStats, onSnapshot, demoMode = false 
     const health = sourceHealth.get(source.id);
     return source.enabled && health?.latest?.status === "success" && !health.noisy;
   }).length;
+  const visibleSources = config.sources.filter((source) => matchesSourceQuery(source, query));
+
+  useEffect(() => {
+    if (searchFocusNonce > 0) searchRef.current?.focus();
+  }, [searchFocusNonce]);
 
   const toggleSource = async (source: SourceConfig) => {
     if (demoMode) return;
+    const previousConfig = config;
     const now = new Date().toISOString();
     const next = await saveConfig({
       ...config,
@@ -59,6 +69,15 @@ export function SourcesPage({ config, sourceStats, onSnapshot, demoMode = false 
       ),
     });
     onSnapshot(next);
+    onToast({
+      title: source.enabled ? "已禁用信息源" : "已启用信息源",
+      description: source.name,
+      actionLabel: "撤销",
+      onAction: async () => {
+        const restored = await saveConfig(previousConfig);
+        onSnapshot(restored);
+      },
+    });
   };
 
   const addSource = async () => {
@@ -80,6 +99,7 @@ export function SourcesPage({ config, sourceStats, onSnapshot, demoMode = false 
       setFormError("这个信息源已经存在。");
       return;
     }
+    const previousConfig = config;
     const now = new Date().toISOString();
     const next = await saveConfig({
       ...config,
@@ -102,6 +122,15 @@ export function SourcesPage({ config, sourceStats, onSnapshot, demoMode = false 
     setDraft(emptyDraft());
     setFormError("");
     setAdding(false);
+    onToast({
+      title: "已保存信息源",
+      description: name,
+      actionLabel: "撤销",
+      onAction: async () => {
+        const restored = await saveConfig(previousConfig);
+        onSnapshot(restored);
+      },
+    });
   };
 
   return (
@@ -199,6 +228,18 @@ export function SourcesPage({ config, sourceStats, onSnapshot, demoMode = false 
         <MetricCard label="最近失败" value={`${failedSources.length}`} tone="danger" />
       </section>
 
+      <section className="panel source-filter-panel">
+        <label>
+          搜索信息源
+          <input
+            ref={searchRef}
+            value={query}
+            placeholder="按名称、URL 或标签过滤，快捷键 /"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
+      </section>
+
       <section className="panel suggestions-panel">
         <div className="panel-header">
           <div>
@@ -222,9 +263,11 @@ export function SourcesPage({ config, sourceStats, onSnapshot, demoMode = false 
 
       {config.sources.length === 0 ? (
         <EmptyState title="没有信息源" description="添加信息源后，这里会显示抓取、入选和失败状态。" />
+      ) : visibleSources.length === 0 ? (
+        <EmptyState title="没有匹配的信息源" description="换个关键词试试，或清空搜索框查看全部。" />
       ) : (
         <section className="source-list compact">
-          {config.sources.map((source) => (
+          {visibleSources.map((source) => (
             <SourceRow
               key={source.id}
               source={source}
@@ -383,4 +426,12 @@ function createSourceId(url: string): string {
     .replace(/^-|-$/g, "")
     .slice(0, 48);
   return `src-custom-${slug || Date.now()}`;
+}
+
+function matchesSourceQuery(source: SourceConfig, query: string): boolean {
+  const value = query.trim().toLowerCase();
+  if (!value) return true;
+  return [source.name, source.url, source.type, source.priority, ...source.tags].some((item) =>
+    item.toLowerCase().includes(value),
+  );
 }

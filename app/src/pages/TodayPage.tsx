@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ErrorRecoveryCard } from "../components/ErrorRecoveryCard";
 import { FeedWarningsCard } from "../components/FeedWarningsCard";
 import { RunStatusCard } from "../components/RunStatusCard";
@@ -6,12 +6,14 @@ import { TodayOverviewCard } from "../components/TodayOverviewCard";
 import { TopPicksList } from "../components/TopPicksList";
 import { PageHeader } from "../components/ui";
 import { getConfigReadiness } from "../services/configReadiness";
-import { copyText, generateDigest, getAutomationStatus, openPath, revealPath, saveConfig, saveItemFeedback, setAutomationPaused } from "../services/bridge";
+import { copyText, deleteItemFeedback, generateDigest, getAutomationStatus, openPath, revealPath, saveConfig, saveItemFeedback, setAutomationPaused } from "../services/bridge";
 import type { AppSnapshot, AutomationStatus } from "../types/bridge";
 import type { AppConfig, DigestLanguage } from "../types/config";
 import type { ReportRecord } from "../types/report";
-import type { RunRecord } from "../types/run";
+import type { ItemFeedback, RunRecord } from "../types/run";
 import type { RouteId } from "../app/routes";
+import type { ToastItem } from "../components/ui";
+import type { UiState } from "../services/uiState";
 
 type Props = {
   config: AppConfig;
@@ -23,14 +25,36 @@ type Props = {
   onNavigate: (route: RouteId) => void;
   onSnapshot: (snapshot: AppSnapshot | ((snapshot: AppSnapshot) => AppSnapshot)) => void;
   demoMode?: boolean;
+  uiState: UiState;
+  onUiStateChange: (patch: Partial<UiState>) => void;
+  focusRequest?: { target: "latest" | "error"; nonce: number } | null;
+  onToast: (toast: Omit<ToastItem, "id">) => string;
+  itemFeedback: ItemFeedback[];
 };
 
-export function TodayPage({ config, latestRun, latestReport, runningRun, runLogs, currentStep, onNavigate, onSnapshot, demoMode = false }: Props) {
+export function TodayPage({
+  config,
+  latestRun,
+  latestReport,
+  runningRun,
+  runLogs,
+  currentStep,
+  onNavigate,
+  onSnapshot,
+  demoMode = false,
+  uiState,
+  onUiStateChange,
+  focusRequest,
+  onToast,
+  itemFeedback,
+}: Props) {
   const configReadiness = getConfigReadiness(config);
   const activeRun = runningRun || latestRun;
   const reportPath = latestReport?.markdownPath || latestRun?.output?.markdownPath;
   const [quickDefaults, setQuickDefaults] = useState(config.digestDefaults);
   const [automationStatus, setAutomationStatus] = useState<AutomationStatus | null>(null);
+  const latestResultRef = useRef<HTMLDivElement>(null);
+  const errorRecoveryRef = useRef<HTMLDivElement>(null);
   const topPicks = latestReport?.topPicks || latestRun?.topPicks || [];
 
   useEffect(() => {
@@ -40,6 +64,13 @@ export function TodayPage({ config, latestRun, latestReport, runningRun, runLogs
   useEffect(() => {
     getAutomationStatus().then(setAutomationStatus).catch(() => setAutomationStatus(null));
   }, [config.automation.enabled, config.automation.timeOfDay, config.automation.pausedUntil, latestRun?.id]);
+
+  useEffect(() => {
+    if (!focusRequest) return;
+    const target = focusRequest.target === "error" ? errorRecoveryRef.current : latestResultRef.current;
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    target?.focus({ preventScroll: true });
+  }, [focusRequest?.nonce, focusRequest?.target]);
 
   const updateDigestDefaults = async (nextDefaults: AppConfig["digestDefaults"]) => {
     setQuickDefaults(nextDefaults);
@@ -73,26 +104,45 @@ export function TodayPage({ config, latestRun, latestReport, runningRun, runLogs
         .map((pick, index) => `${index + 1}. ${pick.title}${pick.source ? ` - ${pick.source}` : ""}${pick.reason ? `\n   ${pick.reason}` : ""}`)
         .join("\n"),
     );
+    onToast({ title: "已复制精选", description: "前三条精选已复制到剪贴板。" });
   };
 
   const recordFeedback = async (pick: NonNullable<RunRecord["topPicks"]>[number], feedback: "useful" | "not_useful" | "hide_similar") => {
     const itemId = pick.itemId || `${pick.url || pick.title}`;
+    const reportId = latestReport?.id || latestRun?.id || "latest";
+    const previous = itemFeedback.find((item) => item.itemId === itemId && item.reportId === reportId);
     if (demoMode) {
       onSnapshot((current) => ({
         ...current,
         feedback: [
-          { itemId, reportId: latestReport?.id || latestRun?.id || "demo", feedback, createdAt: new Date().toISOString() },
-          ...current.feedback.filter((item) => !(item.itemId === itemId && item.reportId === (latestReport?.id || latestRun?.id || "demo"))),
+          { itemId, reportId, feedback, createdAt: new Date().toISOString() },
+          ...current.feedback.filter((item) => !(item.itemId === itemId && item.reportId === reportId)),
         ],
       }));
+      onToast({ title: feedbackLabel(feedback), actionLabel: "撤销", onAction: () => undoFeedback(itemId, reportId, previous, true) });
       return;
     }
     const snapshot = await saveItemFeedback({
       itemId,
-      reportId: latestReport?.id || latestRun?.id || "latest",
+      reportId,
       feedback,
       createdAt: new Date().toISOString(),
     });
+    onSnapshot(snapshot);
+    onToast({ title: feedbackLabel(feedback), actionLabel: "撤销", onAction: () => undoFeedback(itemId, reportId, previous, false) });
+  };
+
+  const undoFeedback = async (itemId: string, reportId: string, previous: ItemFeedback | undefined, demoUndo: boolean) => {
+    if (demoUndo) {
+      onSnapshot((current) => ({
+        ...current,
+        feedback: previous
+          ? [previous, ...current.feedback.filter((item) => !(item.itemId === itemId && item.reportId === reportId))]
+          : current.feedback.filter((item) => !(item.itemId === itemId && item.reportId === reportId)),
+      }));
+      return;
+    }
+    const snapshot = previous ? await saveItemFeedback(previous) : await deleteItemFeedback(itemId, reportId);
     onSnapshot(snapshot);
   };
 
@@ -110,10 +160,16 @@ export function TodayPage({ config, latestRun, latestReport, runningRun, runLogs
         description="每天为你筛选真正重要的 AI / Agent / Coding / EDA 技术信号。"
         actions={
           <>
-          <button className="primary-action" onClick={start} disabled={demoMode || !configReadiness.ready || !!runningRun}>
-            {demoMode ? "Demo 样例" : runningRun ? "生成中..." : "生成今日摘要"}
+          <button className="secondary small-button" disabled={!reportPath} onClick={() => reportPath && onNavigate("reports")} title="快捷键 Ctrl/Cmd+O">
+            查看最新报告
           </button>
-          <button className="secondary small-button" onClick={() => onNavigate("settings")}>设置</button>
+          <button className="secondary small-button" disabled={!topPicks.length} onClick={copyTop3}>
+            复制精选
+          </button>
+          <button className="primary-action" onClick={start} disabled={demoMode || !configReadiness.ready || !!runningRun}>
+            {demoMode ? "Demo 样例" : runningRun ? "生成中..." : latestRun ? "重新生成" : "生成今日摘要"}
+          </button>
+          <button className="secondary small-button" onClick={() => onNavigate("settings")} title="快捷键 Ctrl/Cmd+,">设置</button>
           </>
         }
       />
@@ -125,7 +181,9 @@ export function TodayPage({ config, latestRun, latestReport, runningRun, runLogs
         </section>
       )}
 
-      <TodayOverviewCard run={latestRun} report={latestReport} isRunning={!!runningRun} />
+      <div ref={latestResultRef} tabIndex={-1}>
+        <TodayOverviewCard run={latestRun} report={latestReport} isRunning={!!runningRun} />
+      </div>
 
       <section className="panel automation-status-card">
         <div>
@@ -149,33 +207,24 @@ export function TodayPage({ config, latestRun, latestReport, runningRun, runLogs
         onFeedback={recordFeedback}
       />
 
-      <section className="panel report-actions-panel">
-        <div className="panel-header">
-          <div>
-            <h2>完整报告</h2>
-            <p className="muted">需要细读、复制或重新生成时再使用这些操作。</p>
-          </div>
-        </div>
-        <div className="actions">
-          <button disabled={!reportPath} onClick={() => reportPath && onNavigate("reports")}>预览完整报告</button>
-          <button className="secondary" disabled={!reportPath} onClick={() => reportPath && openPath(reportPath)}>打开文件</button>
-          <button className="secondary" disabled={!topPicks.length} onClick={copyTop3}>复制精选</button>
-          <button className="secondary" disabled={demoMode || !configReadiness.ready || !!runningRun} onClick={start}>重新生成</button>
-        </div>
-      </section>
-
       {latestRun?.status === "failed" && (
-        <ErrorRecoveryCard
-          run={latestRun}
-          onRetry={start}
-          onSettings={() => onNavigate("settings")}
-          onOpenLogs={() => latestRun.output?.logPath && openPath(latestRun.output.logPath)}
-        />
+        <div ref={errorRecoveryRef} tabIndex={-1}>
+          <ErrorRecoveryCard
+            run={latestRun}
+            onRetry={start}
+            onSettings={() => onNavigate("settings")}
+            onOpenLogs={() => latestRun.output?.logPath && openPath(latestRun.output.logPath)}
+          />
+        </div>
       )}
 
       <FeedWarningsCard run={latestRun} />
 
-      <details className="panel quick-run-panel">
+      <details
+        className="panel quick-run-panel"
+        open={uiState.todayQuickSettingsOpen}
+        onToggle={(event) => onUiStateChange({ todayQuickSettingsOpen: event.currentTarget.open })}
+      >
         <summary>
           <span>本次生成设置</span>
           <span className="muted">{quickDefaults.language === "zh" ? "中文" : "英文"} · {quickDefaults.timeRangeHours}h</span>
@@ -228,6 +277,7 @@ export function TodayPage({ config, latestRun, latestReport, runningRun, runLogs
         <summary>更多操作</summary>
         <div className="actions">
           <button className="secondary" disabled={!reportPath} onClick={() => reportPath && revealPath(reportPath)}>在文件夹中显示</button>
+          <button className="secondary" disabled={!reportPath} onClick={() => reportPath && openPath(reportPath)}>用默认应用打开报告</button>
           <button className="secondary" disabled={!latestRun?.output?.logPath} onClick={() => latestRun?.output?.logPath && openPath(latestRun.output.logPath)}>
             查看运行日志
           </button>
@@ -235,6 +285,15 @@ export function TodayPage({ config, latestRun, latestReport, runningRun, runLogs
       </details>
     </div>
   );
+}
+
+function feedbackLabel(feedback: "useful" | "not_useful" | "hide_similar"): string {
+  const labels = {
+    useful: "已标记为有用",
+    not_useful: "已标记为不感兴趣",
+    hide_similar: "已记录隐藏类似内容",
+  };
+  return labels[feedback];
 }
 
 function automationHeadline(config: AppConfig, status: AutomationStatus | null): string {

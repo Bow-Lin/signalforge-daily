@@ -49,7 +49,9 @@ export type NewsCollectionBridge = {
   revealPath: (path: string) => Promise<void>;
   deleteRun: (runId: string) => Promise<AppSnapshot>;
   removeReportFromHistory: (report: { runId?: string; markdownPath: string }) => Promise<AppSnapshot>;
+  restoreReportToHistory: (report: { markdownPath: string }) => Promise<AppSnapshot>;
   deleteReport: (report: { runId?: string; markdownPath: string }) => Promise<AppSnapshot>;
   saveItemFeedback: (feedback: ItemFeedback) => Promise<AppSnapshot>;
+  deleteItemFeedback: (itemId: string, reportId: string) => Promise<AppSnapshot>;
   onDigestEvent: (listener: (event: GenerateDigestEvent) => void) => () => void;
 };

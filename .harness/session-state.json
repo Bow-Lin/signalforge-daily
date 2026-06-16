@@ -1,60 +1,71 @@
 {
-  "task_id": "reports-history-delete-fix-2026-05-27",
+  "task_id": "desktop-ux-click-reduction-2026-06-16",
   "status": "completed",
   "current_phase": "handoff_ready",
-  "last_updated": "2026-05-27T00:00:00+08:00",
+  "last_updated": "2026-06-16T00:00:00+08:00",
   "active_plan": [
-    "Completed: identified root cause in run deletion plus outputPath Markdown scanning.",
-    "Completed: added failing Rust regression tests for hidden removed reports and direct Markdown report deletion.",
-    "Completed: implemented persisted report removal tombstones plus a delete_report command.",
-    "Completed: wired the renderer bridge and Reports page actions with confirmation before direct delete.",
-    "Completed: ran focused and standard verification."
+    "Completed: restored harness context and inspected existing renderer patterns for Today, Reports, Sources, Settings, routes, bridge, and notifications.",
+    "Completed: added focused TypeScript tests for UI state persistence and shortcut mapping, including the expected red failure before implementation.",
+        "Completed: implemented shared toast/undo, persisted page state, generation-complete focus, keyboard shortcuts, and high-frequency Today actions; fixed report-history undo to preserve run-backed metadata.",
+    "Completed: ran renderer, Rust, Browser smoke, JSON, and harness verification."
   ],
-  "next_3_steps": [
-    "Optionally run cd app && npm run tauri:dev and smoke test Reports remove/delete in the desktop shell.",
-    "If side outputs should also be deleted, define the expected file cleanup policy before implementation.",
-    "Continue with normal app release QA."
-  ],
+    "next_3_steps": [
+        "Run `cd app && npm run tauri:dev` and smoke test real Tauri actions: manual generation completion toast, Reports undo, feedback undo, Settings undo.",
+        "Consider adding renderer component tests if a React test runner is introduced.",
+        "If users need cleanup of old run JSON after non-destructive report removal, define a separate compaction policy instead of coupling it to UI removal."
+    ],
   "changed_files": [
     "current-task.md",
-    "app/src-tauri/src/lib.rs",
-    "app/src/pages/ReportsPage.tsx",
-    "app/src/services/bridge.ts",
-    "app/src/types/bridge.ts",
-    "app/src/styles.css",
-    "docs/decisions.md",
     ".harness/session-state.json",
-    ".harness/session-log.md"
+    ".harness/session-log.md",
+    "docs/decisions.md",
+    "docs/error-journal.md",
+    "app/src-tauri/src/lib.rs",
+    "app/src/app/App.tsx",
+    "app/src/components/SettingsForm.tsx",
+    "app/src/components/ui.tsx",
+    "app/src/pages/ReportsPage.tsx",
+    "app/src/pages/SettingsPage.tsx",
+    "app/src/pages/SourcesPage.tsx",
+    "app/src/pages/TodayPage.tsx",
+    "app/src/services/bridge.ts",
+    "app/src/services/uiState.ts",
+    "app/src/services/uiState.test.ts",
+    "app/src/styles.css",
+    "app/src/types/bridge.ts"
   ],
   "validation": {
     "last_commands": [
-      "cd app/src-tauri && cargo test report",
-      "cd app/src-tauri && cargo test",
-      "cd app/src-tauri && cargo check",
+      "Focused TypeScript UI helper test red run",
+      "Focused TypeScript UI helper test green run",
       "cd app && npm run build",
+      "cd app/src-tauri && cargo check",
+      "cd app/src-tauri && cargo test",
       "uv run python -m json.tool .harness/session-state.json",
-      "PowerShell equivalent of scripts/harness_check.sh"
+      "PowerShell equivalent of scripts/harness_check.sh",
+      "Browser smoke via http://127.0.0.1:5173 in Demo Mode"
     ],
-    "last_result": "Focused Rust report tests passed after the expected red failure, full Rust tests passed, cargo check passed, app build passed, JSON validation passed, and PowerShell harness file-presence check passed.",
+        "last_result": "UI helper tests passed, app build passed, Python tests passed, digest CLI help passed, cargo check/test passed with 5 tests, JSON validation passed, harness file-presence check passed, and Browser smoke confirmed Demo Mode header actions plus Sources search focus.",
     "known_failures": [
-      "bash scripts/harness_check.sh was not run because Bash is unavailable in this PowerShell session.",
-      "Runtime Tauri UI smoke testing was not run in this session."
+      "Plain Vite Browser smoke logs expected Tauri invoke/listen errors outside Demo Mode because the Tauri bridge is unavailable.",
+      "Full real-workspace undo/generation flows still need `npm run tauri:dev` runtime QA."
     ]
   },
   "cognitive_state": {
     "failure_count": 0,
-    "current_mode": "reports_history_bugfix",
+    "current_mode": "desktop_ux_click_reduction",
     "tried_approaches": [
       "Harness context restoration",
-      "Systematic debugging",
-      "Reports page and Tauri report scanner inspection",
-      "Test-driven backend regression coverage",
-      "Renderer bridge and Reports page update"
+      "Renderer pattern inspection",
+      "Test-driven UI helper implementation",
+      "Shared renderer toast and state persistence",
+      "Tauri command extensions for undo",
+      "Browser Demo Mode smoke"
     ],
     "blocked_on": null
   },
   "handoff": {
-    "last_summary": "Completed Reports history removal and direct delete fix.",
-    "resume_from": "Run desktop shell smoke testing for Reports remove/delete if interactive QA is desired."
+    "last_summary": "Completed desktop UX click-reduction implementation.",
+    "resume_from": "Run Tauri shell smoke testing for real workspace command flows."
   }
 }

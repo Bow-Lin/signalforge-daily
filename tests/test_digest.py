@@ -265,3 +265,43 @@ def test_fetch_all_feeds_supports_openai_blog_sources(monkeypatch) -> None:
     assert articles[0].title == "Test Post"
     assert articles[0].description == "OpenAI blog body."
     assert stats.source_stats[0].source_name == "OpenAI Developers Blog"
+
+
+def test_fetch_all_feeds_treats_empty_successful_fetch_as_success(monkeypatch) -> None:
+    def fake_fetch(feed: FeedSource, timeout_s: int, *, since=None) -> list[Article]:
+        return []
+
+    monkeypatch.setattr("signalforge_daily.digest._fetch_feed", fake_fetch)
+
+    articles, stats = fetch_all_feeds(
+        [FeedSource(name="quiet source", xml_url="https://example.com/feed.xml")],
+        timeout_s=1,
+        concurrency=1,
+        since=datetime(2026, 5, 27, tzinfo=timezone.utc),
+    )
+
+    assert articles == []
+    assert stats.success_feeds == 1
+    assert stats.failed_feeds == 0
+    assert stats.failures == {}
+    assert stats.source_stats[0].status == "success"
+
+
+def test_fetch_all_feeds_keeps_fetch_exceptions_as_failures(monkeypatch) -> None:
+    def fake_fetch(feed: FeedSource, timeout_s: int, *, since=None) -> list[Article]:
+        raise TimeoutError("read timed out")
+
+    monkeypatch.setattr("signalforge_daily.digest._fetch_feed", fake_fetch)
+
+    articles, stats = fetch_all_feeds(
+        [FeedSource(name="broken source", xml_url="https://example.com/feed.xml")],
+        timeout_s=1,
+        concurrency=1,
+    )
+
+    assert articles == []
+    assert stats.success_feeds == 0
+    assert stats.failed_feeds == 1
+    assert stats.failures == {"broken source": "read timed out"}
+    assert stats.source_stats[0].status == "failed"
+    assert stats.source_stats[0].error_type == "feed_fetch_failed"

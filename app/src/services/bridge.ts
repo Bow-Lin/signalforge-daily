@@ -64,12 +64,20 @@ export function removeReportFromHistory(report: { runId?: string; markdownPath: 
   return invoke("remove_report_from_history", { runId: report.runId || null, markdownPath: report.markdownPath });
 }
 
+export function restoreReportToHistory(report: { markdownPath: string }): Promise<AppSnapshot> {
+  return invoke("restore_report_to_history", { markdownPath: report.markdownPath });
+}
+
 export function deleteReport(report: { runId?: string; markdownPath: string }): Promise<AppSnapshot> {
   return invoke("delete_report", { runId: report.runId || null, markdownPath: report.markdownPath });
 }
 
 export function saveItemFeedback(feedback: ItemFeedback): Promise<AppSnapshot> {
   return invoke("save_item_feedback", { feedback });
+}
+
+export function deleteItemFeedback(itemId: string, reportId: string): Promise<AppSnapshot> {
+  return invoke("delete_item_feedback", { itemId, reportId });
 }
 
 export function onDigestEvent(listener: (event: GenerateDigestEvent) => void): () => void {

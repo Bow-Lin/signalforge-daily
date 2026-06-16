@@ -358,8 +358,10 @@ pub fn run() {
             reveal_path,
             delete_run,
             remove_report_from_history,
+            restore_report_to_history,
             delete_report,
-            save_item_feedback
+            save_item_feedback,
+            delete_item_feedback
         ])
         .run(tauri::generate_context!())
         .expect("error while running SignalForge Daily");
@@ -677,6 +679,14 @@ fn remove_report_from_history(run_id: Option<String>, markdown_path: String) -> 
 }
 
 #[tauri::command]
+fn restore_report_to_history(markdown_path: String) -> Result<AppSnapshot, String> {
+    if let Some(config) = load_config()? {
+        restore_report_to_history_for_config(&config, Path::new(&markdown_path))?;
+    }
+    snapshot()
+}
+
+#[tauri::command]
 fn delete_report(run_id: Option<String>, markdown_path: String) -> Result<AppSnapshot, String> {
     if let Some(config) = load_config()? {
         delete_report_file(&config, run_id.as_deref(), Path::new(&markdown_path))?;
@@ -690,6 +700,16 @@ fn save_item_feedback(feedback: ItemFeedback) -> Result<AppSnapshot, String> {
         let mut items = read_feedback(&config)?;
         items.retain(|item| !(item.item_id == feedback.item_id && item.report_id == feedback.report_id));
         items.push(feedback);
+        write_json(&feedback_path(&config), &items)?;
+    }
+    snapshot()
+}
+
+#[tauri::command]
+fn delete_item_feedback(item_id: String, report_id: String) -> Result<AppSnapshot, String> {
+    if let Some(config) = load_config()? {
+        let mut items = read_feedback(&config)?;
+        items.retain(|item| !(item.item_id == item_id && item.report_id == report_id));
         write_json(&feedback_path(&config), &items)?;
     }
     snapshot()
@@ -1226,16 +1246,9 @@ fn save_run(config: &AppConfig, record: &RunRecord) -> Result<(), String> {
 
 fn remove_report_from_history_for_config(
     config: &AppConfig,
-    run_id: Option<&str>,
+    _run_id: Option<&str>,
     markdown_path: &Path,
 ) -> Result<(), String> {
-    if let Some(run_id) = run_id.filter(|value| !value.trim().is_empty()) {
-        let run_path = runs_dir(config).join(format!("{}.json", run_id));
-        if run_path.exists() {
-            fs::remove_file(run_path).map_err(|err| err.to_string())?;
-        }
-    }
-
     let mut hidden_reports = read_hidden_reports(config)?;
     let key = report_history_key(markdown_path);
     if !hidden_reports.iter().any(|value| value == &key) {
@@ -1244,6 +1257,13 @@ fn remove_report_from_history_for_config(
         write_hidden_reports(config, &hidden_reports)?;
     }
     Ok(())
+}
+
+fn restore_report_to_history_for_config(config: &AppConfig, markdown_path: &Path) -> Result<(), String> {
+    let mut hidden_reports = read_hidden_reports(config)?;
+    let key = report_history_key(markdown_path);
+    hidden_reports.retain(|value| value != &key);
+    write_hidden_reports(config, &hidden_reports)
 }
 
 fn delete_report_file(
@@ -2040,8 +2060,29 @@ mod tests {
         let reports = read_reports(&config, &runs).unwrap();
 
         assert!(markdown_path.exists());
-        assert!(runs.is_empty());
+        assert_eq!(runs.len(), 1);
         assert!(reports.is_empty());
+    }
+
+    #[test]
+    fn restoring_report_history_keeps_run_backed_metadata() {
+        let config = test_config_with_workspace("restore-report");
+        ensure_workspace_dirs(&config).unwrap();
+        let markdown_path = Path::new(&config.output_path).join("digest-20260527.md");
+        fs::write(&markdown_path, "# Daily Digest\n\n- item").unwrap();
+        let run = successful_run_for_report(&config, "run-restore-report", &markdown_path);
+        save_run(&config, &run).unwrap();
+
+        remove_report_from_history_for_config(&config, Some(&run.id), &markdown_path).unwrap();
+        restore_report_to_history_for_config(&config, &markdown_path).unwrap();
+
+        let runs = read_runs(&config).unwrap();
+        let reports = read_reports(&config, &runs).unwrap();
+
+        assert_eq!(runs.len(), 1);
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].run_id, run.id);
+        assert_eq!(reports[0].selected_count, Some(6));
     }
 
     #[test]

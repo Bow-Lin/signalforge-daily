@@ -23,7 +23,6 @@ DEFAULT_RSS_FEEDS: list[tuple[str, str]] = [
     ("lucumr.pocoo.org", "https://lucumr.pocoo.org/feed.atom"),
     ("skyfall.dev", "https://skyfall.dev/rss.xml"),
     ("garymarcus.substack.com", "https://garymarcus.substack.com/feed"),
-    ("rachelbythebay.com", "https://rachelbythebay.com/w/atom.xml"),
     ("overreacted.io", "https://overreacted.io/rss.xml"),
     ("timsh.org", "https://timsh.org/rss/"),
     ("johndcook.com", "https://www.johndcook.com/blog/feed/"),
@@ -80,7 +79,6 @@ DEFAULT_RSS_FEEDS: list[tuple[str, str]] = [
     ("troyhunt.com", "https://www.troyhunt.com/rss/"),
     ("herman.bearblog.dev", "https://herman.bearblog.dev/feed/"),
     ("tomrenner.com", "https://tomrenner.com/index.xml"),
-    ("blog.pixelmelt.dev", "https://blog.pixelmelt.dev/rss/"),
     ("martinalderson.com", "https://martinalderson.com/feed.xml"),
     ("danielchasehooper.com", "https://danielchasehooper.com/feed.xml"),
     ("chiark.greenend.org.uk/~sgtatham", "https://www.chiark.greenend.org.uk/~sgtatham/quasiblog/feed.xml"),
@@ -93,7 +91,6 @@ DEFAULT_RSS_FEEDS: list[tuple[str, str]] = [
     ("keygen.sh", "https://keygen.sh/blog/feed.xml"),
     ("mjg59.dreamwidth.org", "https://mjg59.dreamwidth.org/data/rss"),
     ("computer.rip", "https://computer.rip/rss.xml"),
-    ("tedunangst.com", "https://www.tedunangst.com/flak/rss"),
 ]
 
 DEFAULT_BLOG_SOURCES: list[tuple[str, str, str]] = [
