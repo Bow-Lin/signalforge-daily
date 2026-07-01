@@ -1,41 +1,37 @@
 # Current Task
 
 ## Goal
-Reduce repeated clicks in the desktop app by streamlining common actions, adding action feedback, remembering page state, and supporting keyboard shortcuts.
+Let users route generated digest Markdown into an Obsidian Vault while keeping SignalForge Daily workspace metadata outside the vault.
 
 ## Current Status
-Completed. Common Today, Reports, Sources, Settings, and feedback actions now require fewer repeated clicks and give visible feedback.
+Completed. Settings now has an Obsidian output shortcut that maps a chosen vault folder to a `SignalForge Daily` report subfolder.
 
 ## Scope
-- Keep high-frequency Today actions visible: view latest report, copy selected picks, and regenerate.
-- After manual generation succeeds, keep/focus Today on the latest result and show a toast action to view the full report; after failure, focus the recovery card.
-- Add unified toast feedback with undo where local state can be safely reversed.
-- Remember last route, selected report, and key collapsed/expanded UI state.
-- Add keyboard shortcuts for regenerate, open latest report, settings, and Sources search focus.
+- Add a tested path helper for Obsidian report output.
+- Add a Settings action for choosing an Obsidian Vault as the digest report destination.
+- Preserve existing workspace, run records, logs, and metadata behavior.
 
 ## Out of Scope
-- Python digest algorithm changes.
-- Tauri persistence schema changes unless required for undo safety.
-- Browser visual QA if no runnable Tauri renderer is available.
+- Obsidian plugin development.
+- Recursive report scanning.
+- Markdown template/frontmatter changes.
+- Moving existing reports automatically.
 
 ## Validation Plan
-- Focused TypeScript UI helper test: failed before implementation because `uiState` helper was missing; passed after implementation.
+- Focused TypeScript helper test: passed.
 - `cd app && npm run build`: passed.
-- `cd app/src-tauri && cargo check`: passed.
-- `cd app/src-tauri && cargo test`: passed, 5 tests.
 - `uv run python -m json.tool .harness/session-state.json`: passed.
 - PowerShell equivalent of `scripts/harness_check.sh`: passed.
-- Browser smoke via Vite: reached Setup and Demo Mode, verified top Today actions and `/` Sources search focus; full Tauri bridge flows require Tauri shell because plain Vite lacks `window.__TAURI__`.
+- `bash scripts/harness_check.sh`: skipped because Bash is unavailable in this Windows session.
 
 ## Known Risks
-- Runtime-only interactions such as scrolling/focus are best verified in the Tauri shell; build can only verify integration statically.
-- Undo for destructive physical file deletion remains out of scope; direct delete already warns that it cannot be undone.
-- "从列表移除" is now non-destructive and keeps run metadata so undo can restore the full report card.
+- Runtime Tauri folder-picker smoke testing was not run yet.
+- Reports still scan only the configured output directory, so generated reports should remain directly under the Obsidian `SignalForge Daily` folder.
 
 ## Next 3 Steps
-1. Run `cd app && npm run tauri:dev` and smoke test real Tauri actions: manual generation completion toast, Reports undo, feedback undo, Settings undo.
-2. Consider adding renderer component tests if a React test runner is introduced.
-3. If users need cleanup of old run JSON after non-destructive report removal, define a separate compaction policy instead of coupling it to UI removal.
+1. In the app Settings page, choose the normal workspace folder separately from the Obsidian Vault.
+2. Use the new Obsidian button beside the report output field and save settings.
+3. Generate a digest and confirm the Markdown appears in `<vault>/SignalForge Daily/`.
 
 ## Last Updated
-2026-06-16T00:00:00+08:00
+2026-06-24T11:24:00+08:00

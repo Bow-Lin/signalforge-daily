@@ -2,6 +2,12 @@
 
 ## Decision Log
 
+### 2026-06-24 - Route Digest Reports into Obsidian Vaults
+- Status: Accepted
+- Context: Users want generated digest Markdown to appear in Obsidian for reading, editing, tagging, and linking, while SignalForge Daily still needs local workspace state for config, runs, logs, and metadata.
+- Decision: Treat Obsidian integration as a report-output routing feature: keep `workspacePath` outside the vault, and set `outputPath` to a `SignalForge Daily` subfolder inside the chosen Obsidian Vault.
+- Consequences: Generated Markdown can be indexed and edited by Obsidian without syncing app metadata or logs. Reports still scan only the configured output directory, so the app should write digest files directly under the Obsidian report folder unless recursive scanning is added later.
+
 ### 2026-05-11 - Initialize Standard Project Harness
 - Status: Accepted
 - Context: The repository is a long-lived Python project with multiple CLIs, generated outputs, AI/network integrations, and agent-assisted development.

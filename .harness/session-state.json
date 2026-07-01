@@ -1,71 +1,61 @@
 {
-  "task_id": "desktop-ux-click-reduction-2026-06-16",
+  "task_id": "obsidian-report-output-2026-06-24",
   "status": "completed",
   "current_phase": "handoff_ready",
-  "last_updated": "2026-06-16T00:00:00+08:00",
+  "last_updated": "2026-07-01T00:00:00+08:00",
   "active_plan": [
-    "Completed: restored harness context and inspected existing renderer patterns for Today, Reports, Sources, Settings, routes, bridge, and notifications.",
-    "Completed: added focused TypeScript tests for UI state persistence and shortcut mapping, including the expected red failure before implementation.",
-        "Completed: implemented shared toast/undo, persisted page state, generation-complete focus, keyboard shortcuts, and high-frequency Today actions; fixed report-history undo to preserve run-backed metadata.",
-    "Completed: ran renderer, Rust, Browser smoke, JSON, and harness verification."
+    "Completed: restored harness context and confirmed digest reports are written from config.outputPath.",
+    "Completed: added a tested Obsidian output path helper that targets a SignalForge Daily subfolder inside the chosen vault.",
+    "Completed: added a Settings action beside the report output field for selecting an Obsidian Vault.",
+    "Completed: ran focused helper test, renderer build, JSON validation, and harness file-presence verification."
   ],
-    "next_3_steps": [
-        "Run `cd app && npm run tauri:dev` and smoke test real Tauri actions: manual generation completion toast, Reports undo, feedback undo, Settings undo.",
-        "Consider adding renderer component tests if a React test runner is introduced.",
-        "If users need cleanup of old run JSON after non-destructive report removal, define a separate compaction policy instead of coupling it to UI removal."
-    ],
+  "next_3_steps": [
+    "In the app Settings page, choose the normal workspace folder separately from the Obsidian Vault.",
+    "Use the new Obsidian button beside the report output field and save settings.",
+    "Generate a digest and confirm the Markdown appears in `<vault>/SignalForge Daily/`."
+  ],
   "changed_files": [
     "current-task.md",
     ".harness/session-state.json",
     ".harness/session-log.md",
     "docs/decisions.md",
-    "docs/error-journal.md",
-    "app/src-tauri/src/lib.rs",
-    "app/src/app/App.tsx",
+    "README.md",
     "app/src/components/SettingsForm.tsx",
-    "app/src/components/ui.tsx",
-    "app/src/pages/ReportsPage.tsx",
-    "app/src/pages/SettingsPage.tsx",
-    "app/src/pages/SourcesPage.tsx",
     "app/src/pages/TodayPage.tsx",
-    "app/src/services/bridge.ts",
-    "app/src/services/uiState.ts",
-    "app/src/services/uiState.test.ts",
-    "app/src/styles.css",
-    "app/src/types/bridge.ts"
+    "app/src/services/obsidianOutput.ts",
+    "app/src/services/obsidianOutput.test.ts",
+    "img/project.png"
   ],
   "validation": {
     "last_commands": [
-      "Focused TypeScript UI helper test red run",
-      "Focused TypeScript UI helper test green run",
-      "cd app && npm run build",
-      "cd app/src-tauri && cargo check",
-      "cd app/src-tauri && cargo test",
+      "git diff --check",
+      "cd app; .\\node_modules\\.bin\\tsc --module NodeNext --moduleResolution NodeNext --target es2022 --lib \"es2022,dom\" --skipLibCheck --outDir .tmp-tests --rootDir src src/services/obsidianOutput.ts src/services/obsidianOutput.test.ts; if ($LASTEXITCODE -eq 0) { node .tmp-tests/services/obsidianOutput.test.js }",
+      "cd app; npm run build",
       "uv run python -m json.tool .harness/session-state.json",
       "PowerShell equivalent of scripts/harness_check.sh",
-      "Browser smoke via http://127.0.0.1:5173 in Demo Mode"
+      "Secret-pattern scan across reviewed files"
     ],
-        "last_result": "UI helper tests passed, app build passed, Python tests passed, digest CLI help passed, cargo check/test passed with 5 tests, JSON validation passed, harness file-presence check passed, and Browser smoke confirmed Demo Mode header actions plus Sources search focus.",
+    "last_result": "Review gate found no P1/P2 blockers; diff whitespace check, focused Obsidian helper tests, renderer TypeScript and Vite production build, harness JSON, file-presence checks, and secret-pattern scan passed.",
     "known_failures": [
-      "Plain Vite Browser smoke logs expected Tauri invoke/listen errors outside Demo Mode because the Tauri bridge is unavailable.",
-      "Full real-workspace undo/generation flows still need `npm run tauri:dev` runtime QA."
+      "An initial root-level `npx tsc` attempt invoked the wrong package prompt instead of the app-local TypeScript compiler.",
+      "npm warned about unknown env config `electron-mirror`; build was unaffected.",
+      "`bash scripts/harness_check.sh` could not run because Bash is unavailable in this Windows session.",
+      "Runtime Tauri folder-picker smoke testing was not run in this turn."
     ]
   },
   "cognitive_state": {
-    "failure_count": 0,
-    "current_mode": "desktop_ux_click_reduction",
+    "failure_count": 1,
+    "current_mode": "obsidian_output_integration",
     "tried_approaches": [
       "Harness context restoration",
-      "Renderer pattern inspection",
-      "Test-driven UI helper implementation",
-      "Shared renderer toast and state persistence",
-      "Tauri command extensions for undo",
-      "Browser Demo Mode smoke"
+      "Focused path-helper TDD",
+      "Settings form UI wiring",
+      "Renderer build verification"
     ],
     "blocked_on": null
   },
   "handoff": {
-    "last_summary": "Completed desktop UX click-reduction implementation.",
-    "resume_from": "Run Tauri shell smoke testing for real workspace command flows."
+    "last_summary": "Added an Obsidian report-output shortcut while keeping workspace metadata separate.",
+    "resume_from": "Run a Tauri shell smoke test if interactive folder-picker validation is needed."
   }
 }

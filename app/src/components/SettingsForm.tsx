@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { chooseFolder, generateDigest, getAutomationStatus, saveConfig, setAutomationPaused, testConnection } from "../services/bridge";
 import { getConfigReadiness } from "../services/configReadiness";
 import { ensureNotificationPermission, getNotificationPermission, notify, type NotificationPermissionState } from "../services/notificationService";
+import { buildObsidianOutputPath } from "../services/obsidianOutput";
 import type { ToastItem } from "./ui";
 import type { AppSnapshot, AutomationStatus } from "../types/bridge";
 import { defaultConfig, type AppConfig } from "../types/config";
@@ -58,6 +59,16 @@ export function SettingsForm({ config, onSaved, compact = false, uiState, onUiSt
       ...current,
       workspacePath: folder,
       outputPath: current.outputPath || `${folder}/reports`,
+    }));
+  };
+
+  const pickObsidianVault = async () => {
+    const folder = await chooseFolder();
+    if (!folder) return;
+    setTestOk(false);
+    setDraft((current) => ({
+      ...current,
+      outputPath: buildObsidianOutputPath(folder),
     }));
   };
 
@@ -132,7 +143,10 @@ export function SettingsForm({ config, onSaved, compact = false, uiState, onUiSt
         </label>
         <label>
           报告输出文件夹
-          <input value={draft.outputPath} onChange={(event) => { setTestOk(false); setDraft({ ...draft, outputPath: event.target.value }); }} />
+          <div className="inline-field">
+            <input value={draft.outputPath} onChange={(event) => { setTestOk(false); setDraft({ ...draft, outputPath: event.target.value }); }} />
+            <button className="secondary" onClick={pickObsidianVault} title="选择 Obsidian Vault">Obsidian</button>
+          </div>
         </label>
       </section>
 

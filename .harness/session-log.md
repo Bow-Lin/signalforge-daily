@@ -1,5 +1,62 @@
 # Session Log
 
+## 2026-07-01 - Commit Main Review Gate
+- Goal: Review, verify, commit, and push the current Obsidian output shortcut, Today button copy, README screenshot, and harness updates to `master`.
+- Review:
+  - Inspected tracked and relevant untracked changes before staging.
+  - Left `.claude/settings.local.json` untracked because it is local tool state outside the project change scope.
+  - No P1/P2 blockers found.
+- Verification:
+  - `git diff --check`: passed.
+  - Focused Obsidian output helper test via app-local `tsc` and `node`: passed, 2 tests.
+  - `cd app; npm run build`: passed.
+  - `uv run python -m json.tool .harness/session-state.json`: passed.
+  - PowerShell equivalent of `scripts/harness_check.sh`: passed, required files present.
+  - Secret-pattern scan across reviewed files: no matches.
+- Notes:
+  - `npm` warned about unknown env config `electron-mirror`; build was unaffected.
+  - Runtime Tauri folder-picker smoke testing was not run in this gate.
+
+## 2026-06-24 - Obsidian Report Output
+- Goal: Connect digest output to Obsidian by routing generated Markdown into a vault subfolder while preserving local app workspace state outside the vault.
+- Context restored:
+  - Digest CLI accepts `--output` and the Tauri runner builds report paths from `config.outputPath`.
+  - Reports scans `.md` files directly under `outputPath`.
+  - Existing workspace data includes config, runs, logs, metadata, and reports.
+- Implementation:
+  - Added `app/src/services/obsidianOutput.ts` with `buildObsidianOutputPath`, mapping a selected vault to `<vault>/SignalForge Daily`.
+  - Added focused tests in `app/src/services/obsidianOutput.test.ts`.
+  - Added an `Obsidian` button beside the Settings report output folder field; selecting a folder updates only `outputPath`.
+  - Left workspace selection, run records, logs, and report scanning behavior unchanged.
+  - Recorded the Obsidian routing decision in `docs/decisions.md`.
+- Verification:
+  - Focused TypeScript helper test: passed.
+  - `cd app && npm run build`: passed.
+  - `uv run python -m json.tool .harness/session-state.json`: passed.
+  - PowerShell equivalent of `scripts/harness_check.sh`: passed, 18 files present.
+- Notes:
+  - An initial root-level `npx tsc` attempt invoked the wrong package prompt; reran with the app-local TypeScript compiler.
+  - `npm` warned about unknown env config `electron-mirror`; build was unaffected.
+  - `bash scripts/harness_check.sh` was not run because Bash is unavailable in this Windows session.
+  - Runtime Tauri folder-picker smoke testing was not run in this turn.
+
+## 2026-06-22 - Today Primary Button Copy
+- Goal: Rename the Today tab's largest generation button so it does not imply the first run is a repeat action.
+- Context restored:
+  - Previous desktop UX click-reduction work had added the Today header action with a conditional label.
+  - The current request was limited to user-facing copy in the renderer.
+- Implementation:
+  - Updated `app/src/pages/TodayPage.tsx` so the available primary action says `生成今日摘要`.
+  - Preserved the existing `Demo 样例` and `生成中...` labels.
+  - Left the internal shortcut/action id as `regenerate` because this was a visible copy change only.
+- Verification:
+  - `cd app && npm run build`: passed.
+  - `uv run python -m json.tool .harness/session-state.json`: passed.
+  - PowerShell equivalent of `scripts/harness_check.sh`: passed.
+- Notes:
+  - `npm` warned about unknown env config `electron-mirror`; build was unaffected.
+  - Tauri runtime smoke testing was not run because this is a renderer text-only change.
+
 ## 2026-05-11 - Harness Initialization
 - Goal: Add a Standard Project Harness for recoverable, verifiable agent sessions.
 - Project type: Python 3.10+ package using `uv`, `pyproject.toml`, and `pytest`.

@@ -157,7 +157,7 @@ export function TodayPage({
     <div className="page">
       <PageHeader
         title="SignalForge Daily"
-        description="每天为你筛选真正重要的 AI / Agent / Coding / EDA 技术信号。"
+        description="每天为你筛选真正重要的AI技术信号。"
         actions={
           <>
           <button className="secondary small-button" disabled={!reportPath} onClick={() => reportPath && onNavigate("reports")} title="快捷键 Ctrl/Cmd+O">
@@ -167,7 +167,7 @@ export function TodayPage({
             复制精选
           </button>
           <button className="primary-action" onClick={start} disabled={demoMode || !configReadiness.ready || !!runningRun}>
-            {demoMode ? "Demo 样例" : runningRun ? "生成中..." : latestRun ? "重新生成" : "生成今日摘要"}
+            {demoMode ? "Demo 样例" : runningRun ? "生成中..." : "生成今日摘要"}
           </button>
           <button className="secondary small-button" onClick={() => onNavigate("settings")} title="快捷键 Ctrl/Cmd+,">设置</button>
           </>
