@@ -2,6 +2,12 @@
 
 ## Decision Log
 
+### 2026-07-06 - Use Radar-Style App Icon
+- Status: Accepted
+- Context: SignalForge Daily needs a Windows taskbar icon that remains recognizable at small sizes and reflects signal monitoring plus daily intelligence.
+- Decision: Use the Signal Radar direction: a dark rounded-square tile with cyan radar arcs, a central signal node, and a small amber pulse. Keep the Tauri bundle icon path as `app/src-tauri/icons/icon.ico` and maintain a same-source PNG preview beside it.
+- Consequences: The taskbar icon now emphasizes the SignalForge brand rather than a generic document/digest metaphor. Future icon refinements should preserve high contrast and simple geometry for 16px and 24px Windows shell sizes.
+
 ### 2026-06-24 - Route Digest Reports into Obsidian Vaults
 - Status: Accepted
 - Context: Users want generated digest Markdown to appear in Obsidian for reading, editing, tagging, and linking, while SignalForge Daily still needs local workspace state for config, runs, logs, and metadata.

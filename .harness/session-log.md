@@ -1,5 +1,28 @@
 # Session Log
 
+## 2026-07-06 - Windows Taskbar Icon
+- Goal: Design and apply a Windows taskbar icon for SignalForge Daily.
+- Context restored:
+  - Tauri bundle configuration uses `app/src-tauri/icons/icon.ico`.
+  - Existing app metadata and bundle target remain unchanged.
+  - Worktree had only `.claude/` as unrelated untracked local tool state before icon changes.
+- Implementation:
+  - Generated three visual icon directions: Signal Radar, Daily Brief Bolt, and SF Signal Monogram.
+  - Selected Signal Radar for taskbar readability and brand fit.
+  - Replaced `app/src-tauri/icons/icon.ico` with a multi-resolution Windows icon containing 16, 24, 32, 48, 64, 128, and 256 pixel sizes.
+  - Added `app/src-tauri/icons/icon.png` as a same-source preview/maintenance asset.
+  - Recorded the icon direction in `docs/decisions.md`.
+- Verification:
+  - Pillow inspection confirmed `icon.png` is 1024x1024 RGBA with transparent corners.
+  - Pillow inspection confirmed `icon.ico` includes 16/24/32/48/64/128/256 sizes.
+  - `cd app && npm run build`: passed.
+  - `cd app/src-tauri && cargo check`: passed.
+- Notes:
+  - The brainstorming visual companion could not start because Bash is unavailable in this Windows PowerShell session; design selection continued in chat.
+  - `npm` warned about unknown env config `electron-mirror`; build was unaffected.
+  - Runtime taskbar/window icon smoke testing was not run; use `cd app && npm run tauri:dev`.
+  - Installer packaging was not rerun.
+
 ## 2026-07-01 - Commit Main Review Gate
 - Goal: Review, verify, commit, and push the current Obsidian output shortcut, Today button copy, README screenshot, and harness updates to `master`.
 - Review:

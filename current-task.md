@@ -1,37 +1,37 @@
 # Current Task
 
 ## Goal
-Let users route generated digest Markdown into an Obsidian Vault while keeping SignalForge Daily workspace metadata outside the vault.
+Design and apply a Windows taskbar icon for the SignalForge Daily desktop app.
 
 ## Current Status
-Completed. Settings now has an Obsidian output shortcut that maps a chosen vault folder to a `SignalForge Daily` report subfolder.
+Completed. The app now uses a radar-style SignalForge Daily icon through Tauri's configured Windows `.ico` asset.
 
 ## Scope
-- Add a tested path helper for Obsidian report output.
-- Add a Settings action for choosing an Obsidian Vault as the digest report destination.
-- Preserve existing workspace, run records, logs, and metadata behavior.
+- Choose a taskbar-readable icon direction.
+- Replace `app/src-tauri/icons/icon.ico` with a multi-resolution Windows icon.
+- Add a same-source PNG preview for future maintenance.
+- Verify the renderer and Tauri shell still build/check.
 
 ## Out of Scope
-- Obsidian plugin development.
-- Recursive report scanning.
-- Markdown template/frontmatter changes.
-- Moving existing reports automatically.
+- Installer packaging.
+- Runtime Windows taskbar smoke testing.
+- App UI redesign.
+- Digest generation behavior changes.
 
 ## Validation Plan
-- Focused TypeScript helper test: passed.
+- Icon asset inspection: passed, `.ico` contains 16/24/32/48/64/128/256 sizes.
+- PNG alpha inspection: passed, corners are transparent.
 - `cd app && npm run build`: passed.
-- `uv run python -m json.tool .harness/session-state.json`: passed.
-- PowerShell equivalent of `scripts/harness_check.sh`: passed.
-- `bash scripts/harness_check.sh`: skipped because Bash is unavailable in this Windows session.
+- `cd app/src-tauri && cargo check`: passed.
 
 ## Known Risks
-- Runtime Tauri folder-picker smoke testing was not run yet.
-- Reports still scan only the configured output directory, so generated reports should remain directly under the Obsidian `SignalForge Daily` folder.
+- Windows taskbar runtime refresh was not smoke tested in a launched Tauri app.
+- `npm run package` was not run, so installer icon embedding was not revalidated.
 
 ## Next 3 Steps
-1. In the app Settings page, choose the normal workspace folder separately from the Obsidian Vault.
-2. Use the new Obsidian button beside the report output field and save settings.
-3. Generate a digest and confirm the Markdown appears in `<vault>/SignalForge Daily/`.
+1. Launch `cd app && npm run tauri:dev` and confirm the taskbar/window icon appears as expected.
+2. If packaging for release, rerun `cd app && npm run package` on a network-stable machine.
+3. If small-size contrast feels weak, refine the 16/24px source layer manually.
 
 ## Last Updated
-2026-06-24T11:24:00+08:00
+2026-07-06T11:30:00+08:00

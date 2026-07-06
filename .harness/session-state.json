@@ -1,61 +1,58 @@
 {
-  "task_id": "obsidian-report-output-2026-06-24",
+  "task_id": "windows-taskbar-icon-2026-07-06",
   "status": "completed",
   "current_phase": "handoff_ready",
-  "last_updated": "2026-07-01T00:00:00+08:00",
+  "last_updated": "2026-07-06T11:30:00+08:00",
   "active_plan": [
-    "Completed: restored harness context and confirmed digest reports are written from config.outputPath.",
-    "Completed: added a tested Obsidian output path helper that targets a SignalForge Daily subfolder inside the chosen vault.",
-    "Completed: added a Settings action beside the report output field for selecting an Obsidian Vault.",
-    "Completed: ran focused helper test, renderer build, JSON validation, and harness file-presence verification."
+    "Completed: restored harness context and inspected the Tauri icon configuration.",
+    "Completed: generated three icon concepts and selected the Signal Radar direction.",
+    "Completed: replaced the Windows ICO with a multi-resolution radar-style icon and added a PNG preview.",
+    "Completed: verified icon sizes, transparent PNG corners, renderer build, and Tauri cargo check."
   ],
   "next_3_steps": [
-    "In the app Settings page, choose the normal workspace folder separately from the Obsidian Vault.",
-    "Use the new Obsidian button beside the report output field and save settings.",
-    "Generate a digest and confirm the Markdown appears in `<vault>/SignalForge Daily/`."
+    "Launch `cd app && npm run tauri:dev` and confirm the taskbar/window icon appears as expected.",
+    "If packaging for release, rerun `cd app && npm run package` on a network-stable machine.",
+    "If small-size contrast feels weak, refine the 16/24px source layer manually."
   ],
   "changed_files": [
     "current-task.md",
     ".harness/session-state.json",
     ".harness/session-log.md",
     "docs/decisions.md",
-    "README.md",
-    "app/src/components/SettingsForm.tsx",
-    "app/src/pages/TodayPage.tsx",
-    "app/src/services/obsidianOutput.ts",
-    "app/src/services/obsidianOutput.test.ts",
-    "img/project.png"
+    "app/src-tauri/icons/icon.ico",
+    "app/src-tauri/icons/icon.png"
   ],
   "validation": {
     "last_commands": [
-      "git diff --check",
-      "cd app; .\\node_modules\\.bin\\tsc --module NodeNext --moduleResolution NodeNext --target es2022 --lib \"es2022,dom\" --skipLibCheck --outDir .tmp-tests --rootDir src src/services/obsidianOutput.ts src/services/obsidianOutput.test.ts; if ($LASTEXITCODE -eq 0) { node .tmp-tests/services/obsidianOutput.test.js }",
+      "Pillow icon inspection for PNG alpha and ICO embedded sizes",
       "cd app; npm run build",
+      "cd app/src-tauri; cargo check",
       "uv run python -m json.tool .harness/session-state.json",
-      "PowerShell equivalent of scripts/harness_check.sh",
-      "Secret-pattern scan across reviewed files"
+      "git diff --check",
+      "PowerShell equivalent of scripts/harness_check.sh"
     ],
-    "last_result": "Review gate found no P1/P2 blockers; diff whitespace check, focused Obsidian helper tests, renderer TypeScript and Vite production build, harness JSON, file-presence checks, and secret-pattern scan passed.",
+    "last_result": "Icon PNG has transparent corners; ICO contains 16/24/32/48/64/128/256 sizes; renderer build and Tauri cargo check passed.",
     "known_failures": [
-      "An initial root-level `npx tsc` attempt invoked the wrong package prompt instead of the app-local TypeScript compiler.",
+      "The brainstorming visual companion could not start because Bash is unavailable in this Windows PowerShell session.",
       "npm warned about unknown env config `electron-mirror`; build was unaffected.",
-      "`bash scripts/harness_check.sh` could not run because Bash is unavailable in this Windows session.",
-      "Runtime Tauri folder-picker smoke testing was not run in this turn."
+      "Runtime Windows taskbar icon smoke testing was not run in the Tauri shell.",
+      "Installer packaging was not rerun."
     ]
   },
   "cognitive_state": {
     "failure_count": 1,
-    "current_mode": "obsidian_output_integration",
+    "current_mode": "desktop_icon_application",
     "tried_approaches": [
       "Harness context restoration",
-      "Focused path-helper TDD",
-      "Settings form UI wiring",
-      "Renderer build verification"
+      "Text-based visual direction selection after browser companion failed",
+      "AI-generated raster icon concept",
+      "Pillow conversion to PNG and multi-resolution ICO",
+      "Renderer and Tauri shell verification"
     ],
     "blocked_on": null
   },
   "handoff": {
-    "last_summary": "Added an Obsidian report-output shortcut while keeping workspace metadata separate.",
-    "resume_from": "Run a Tauri shell smoke test if interactive folder-picker validation is needed."
+    "last_summary": "Applied a radar-style Windows taskbar icon for SignalForge Daily.",
+    "resume_from": "Run `cd app && npm run tauri:dev` to visually confirm the taskbar/window icon in the live shell."
   }
 }
